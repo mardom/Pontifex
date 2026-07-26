@@ -1,0 +1,263 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>pontifex.pipeline &mdash; Pontifex 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            Pontifex
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Pontifex</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../pontifex.html">pontifex</a></li>
+      <li class="breadcrumb-item active">pontifex.pipeline</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for pontifex.pipeline</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Union</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.interpolate</span><span class="w"> </span><span class="kn">import</span> <span class="n">interp1d</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">aion_pz</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.estimators</span><span class="w"> </span><span class="kn">import</span> <span class="n">CommitteeOfExperts</span><span class="p">,</span> <span class="n">get_bands_and_ref</span><span class="p">,</span> <span class="n">Z_CENTERS</span><span class="p">,</span> <span class="n">Z_GRID</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.em</span><span class="w"> </span><span class="kn">import</span> <span class="n">PontifexEM</span>
+
+<div class="viewcode-block" id="logger">
+<a class="viewcode-back" href="../../autoapi/pontifex/pipeline/index.html#pontifex.logger">[docs]</a>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="train_and_estimate">
+<a class="viewcode-back" href="../../autoapi/pontifex/pipeline/index.html#pontifex.train_and_estimate">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">train_and_estimate</span><span class="p">(</span>
+    <span class="n">train_file</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">],</span>
+    <span class="n">test_file</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">],</span>
+    <span class="n">output_file</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">],</span>
+    <span class="n">save_model_to</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">42</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Train the committee of experts, perform footprint-corrected EM calibration</span>
+<span class="sd">    via Nugundam, and predict on the test catalog.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Loading catalogs: train=</span><span class="si">{</span><span class="n">train_file</span><span class="si">}</span><span class="s2">, test=</span><span class="si">{</span><span class="n">test_file</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">train_dict</span> <span class="o">=</span> <span class="n">aion_pz</span><span class="o">.</span><span class="n">load_catalog</span><span class="p">(</span><span class="n">train_file</span><span class="p">)</span>
+    <span class="n">test_dict</span> <span class="o">=</span> <span class="n">aion_pz</span><span class="o">.</span><span class="n">load_catalog</span><span class="p">(</span><span class="n">test_file</span><span class="p">)</span>
+
+    <span class="c1"># Resolve true redshifts</span>
+    <span class="n">z_true</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">train_dict</span><span class="p">[</span><span class="n">aion_pz</span><span class="o">.</span><span class="n">REDSHIFT_COL</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;float64&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">aion_pz</span><span class="o">.</span><span class="n">MANYBAND_COL</span> <span class="ow">in</span> <span class="n">train_dict</span><span class="p">:</span>
+        <span class="n">z_many</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">train_dict</span><span class="p">[</span><span class="n">aion_pz</span><span class="o">.</span><span class="n">MANYBAND_COL</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;float64&quot;</span><span class="p">)</span>
+        <span class="n">fill</span> <span class="o">=</span> <span class="o">~</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">z_true</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">z_many</span><span class="p">)</span>
+        <span class="n">z_true</span><span class="p">[</span><span class="n">fill</span><span class="p">]</span> <span class="o">=</span> <span class="n">z_many</span><span class="p">[</span><span class="n">fill</span><span class="p">]</span>
+    <span class="n">good</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">z_true</span><span class="p">)</span>
+    <span class="n">train_dict</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span><span class="p">[</span><span class="n">good</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">train_dict</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+    <span class="n">train_dict</span><span class="p">[</span><span class="s1">&#39;redshift&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">z_true</span><span class="p">[</span><span class="n">good</span><span class="p">]</span>
+
+    <span class="n">bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="p">,</span> <span class="n">is_roman</span> <span class="o">=</span> <span class="n">get_bands_and_ref</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">train_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">()))</span>
+
+    <span class="c1"># Determine CI vs Production mode</span>
+    <span class="n">n_train</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">train_dict</span><span class="p">[</span><span class="s1">&#39;redshift&#39;</span><span class="p">])</span>
+    <span class="n">is_ci</span> <span class="o">=</span> <span class="n">n_train</span> <span class="o">&lt;</span> <span class="mi">1500</span>
+
+    <span class="c1"># 1. Fit committee of experts</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Fitting Committee of Experts...&quot;</span><span class="p">)</span>
+    <span class="n">committee</span> <span class="o">=</span> <span class="n">CommitteeOfExperts</span><span class="p">(</span><span class="n">is_ci</span><span class="o">=</span><span class="n">is_ci</span><span class="p">)</span>
+    <span class="n">committee</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">train_dict</span><span class="p">,</span> <span class="n">bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="p">,</span> <span class="n">is_roman</span><span class="p">)</span>
+
+    <span class="c1"># 2. Predict initial PDFs on Z_CENTERS</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Predicting initial PDFs...&quot;</span><span class="p">)</span>
+    <span class="n">initial_pdfs</span> <span class="o">=</span> <span class="n">committee</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">test_dict</span><span class="p">)</span>
+
+    <span class="c1"># 3. Perform Nugundam EM Calibration</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Running Nugundam EM Calibration...&quot;</span><span class="p">)</span>
+    <span class="n">ref_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+        <span class="s1">&#39;ra&#39;</span><span class="p">:</span> <span class="n">train_dict</span><span class="p">[</span><span class="s1">&#39;ra&#39;</span><span class="p">],</span>
+        <span class="s1">&#39;dec&#39;</span><span class="p">:</span> <span class="n">train_dict</span><span class="p">[</span><span class="s1">&#39;dec&#39;</span><span class="p">],</span>
+        <span class="s1">&#39;ztrue&#39;</span><span class="p">:</span> <span class="n">train_dict</span><span class="p">[</span><span class="s1">&#39;redshift&#39;</span><span class="p">]</span>
+    <span class="p">})</span>
+    <span class="n">unk_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+        <span class="s1">&#39;ra&#39;</span><span class="p">:</span> <span class="n">test_dict</span><span class="p">[</span><span class="s1">&#39;ra&#39;</span><span class="p">],</span>
+        <span class="s1">&#39;dec&#39;</span><span class="p">:</span> <span class="n">test_dict</span><span class="p">[</span><span class="s1">&#39;dec&#39;</span><span class="p">]</span>
+    <span class="p">})</span>
+
+    <span class="c1"># Limit EM iterations in CI to speed up testing</span>
+    <span class="n">em_max_iter</span> <span class="o">=</span> <span class="mi">2</span> <span class="k">if</span> <span class="n">is_ci</span> <span class="k">else</span> <span class="mi">5</span>
+    <span class="n">em</span> <span class="o">=</span> <span class="n">PontifexEM</span><span class="p">(</span>
+        <span class="n">unk_df</span><span class="o">=</span><span class="n">unk_df</span><span class="p">,</span>
+        <span class="n">ref_df</span><span class="o">=</span><span class="n">ref_df</span><span class="p">,</span>
+        <span class="n">initial_pdfs</span><span class="o">=</span><span class="n">initial_pdfs</span><span class="p">,</span>
+        <span class="n">z_grid_edges</span><span class="o">=</span><span class="n">Z_GRID</span><span class="p">,</span>
+        <span class="n">use_bias_correction</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">floor_val</span><span class="o">=</span><span class="mf">1e-5</span><span class="p">,</span>
+        <span class="n">learning_rate</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span>
+        <span class="n">smoothing_sigma</span><span class="o">=</span><span class="mf">1.0</span>
+    <span class="p">)</span>
+    
+    <span class="n">calibrated_pdfs</span> <span class="o">=</span> <span class="n">em</span><span class="o">.</span><span class="n">optimize</span><span class="p">(</span><span class="n">max_iter</span><span class="o">=</span><span class="n">em_max_iter</span><span class="p">)</span>
+
+    <span class="c1"># 4. Interpolate and normalize onto Z_GRID</span>
+    <span class="n">f_interp</span> <span class="o">=</span> <span class="n">interp1d</span><span class="p">(</span><span class="n">Z_CENTERS</span><span class="p">,</span> <span class="n">calibrated_pdfs</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s1">&#39;linear&#39;</span><span class="p">,</span> <span class="n">fill_value</span><span class="o">=</span><span class="s1">&#39;extrapolate&#39;</span><span class="p">)</span>
+    <span class="n">calibrated_pdfs_301</span> <span class="o">=</span> <span class="n">f_interp</span><span class="p">(</span><span class="n">Z_GRID</span><span class="p">)</span>
+    <span class="n">calibrated_pdfs_301</span> <span class="o">=</span> <span class="n">aion_pz</span><span class="o">.</span><span class="n">_renorm</span><span class="p">(</span><span class="n">calibrated_pdfs_301</span><span class="p">,</span> <span class="n">Z_GRID</span><span class="p">)</span>
+
+    <span class="c1"># 5. Write outputs and save model weights</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Writing final calibrated PDFs to </span><span class="si">{</span><span class="n">output_file</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">aion_pz</span><span class="o">.</span><span class="n">write_qp</span><span class="p">(</span><span class="n">calibrated_pdfs_301</span><span class="p">,</span> <span class="n">test_dict</span><span class="p">[</span><span class="n">aion_pz</span><span class="o">.</span><span class="n">OBJECT_ID_COL</span><span class="p">],</span> <span class="n">output_file</span><span class="p">,</span> <span class="n">z_grid</span><span class="o">=</span><span class="n">Z_GRID</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">save_model_to</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Saving trained model weights to </span><span class="si">{</span><span class="n">save_model_to</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">committee</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">save_model_to</span><span class="p">))</span></div>
+
+
+
+<div class="viewcode-block" id="estimate_only">
+<a class="viewcode-back" href="../../autoapi/pontifex/pipeline/index.html#pontifex.estimate_only">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">estimate_only</span><span class="p">(</span>
+    <span class="n">model_file</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">],</span>
+    <span class="n">test_file</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">],</span>
+    <span class="n">output_file</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Run committee prediction and Nugundam EM calibration using saved model weights.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Loading model weights from </span><span class="si">{</span><span class="n">model_file</span><span class="si">}</span><span class="s2">...&quot;</span><span class="p">)</span>
+    <span class="n">committee</span> <span class="o">=</span> <span class="n">CommitteeOfExperts</span><span class="p">()</span>
+    <span class="n">committee</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">model_file</span><span class="p">))</span>
+    
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Loading test catalog: </span><span class="si">{</span><span class="n">test_file</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">test_dict</span> <span class="o">=</span> <span class="n">aion_pz</span><span class="o">.</span><span class="n">load_catalog</span><span class="p">(</span><span class="n">test_file</span><span class="p">)</span>
+
+    <span class="c1"># 1. Predict initial PDFs on Z_CENTERS</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Predicting initial PDFs...&quot;</span><span class="p">)</span>
+    <span class="n">initial_pdfs</span> <span class="o">=</span> <span class="n">committee</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">test_dict</span><span class="p">)</span>
+
+    <span class="c1"># 2. Run Nugundam EM Calibration using stored training coordinates as reference</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Running Nugundam EM Calibration...&quot;</span><span class="p">)</span>
+    <span class="n">train_som</span> <span class="o">=</span> <span class="n">committee</span><span class="o">.</span><span class="n">model_dict</span><span class="p">[</span><span class="s2">&quot;train_dict_som&quot;</span><span class="p">]</span>
+    <span class="n">ref_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+        <span class="s1">&#39;ra&#39;</span><span class="p">:</span> <span class="n">train_som</span><span class="p">[</span><span class="s1">&#39;ra&#39;</span><span class="p">],</span>
+        <span class="s1">&#39;dec&#39;</span><span class="p">:</span> <span class="n">train_som</span><span class="p">[</span><span class="s1">&#39;dec&#39;</span><span class="p">],</span>
+        <span class="s1">&#39;ztrue&#39;</span><span class="p">:</span> <span class="n">train_som</span><span class="p">[</span><span class="s1">&#39;redshift&#39;</span><span class="p">]</span>
+    <span class="p">})</span>
+    <span class="n">unk_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+        <span class="s1">&#39;ra&#39;</span><span class="p">:</span> <span class="n">test_dict</span><span class="p">[</span><span class="s1">&#39;ra&#39;</span><span class="p">],</span>
+        <span class="s1">&#39;dec&#39;</span><span class="p">:</span> <span class="n">test_dict</span><span class="p">[</span><span class="s1">&#39;dec&#39;</span><span class="p">]</span>
+    <span class="p">})</span>
+
+    <span class="n">n_test</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">test_dict</span><span class="p">[</span><span class="nb">list</span><span class="p">(</span><span class="n">test_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">())[</span><span class="mi">0</span><span class="p">]])</span>
+    <span class="n">is_ci</span> <span class="o">=</span> <span class="n">n_test</span> <span class="o">&lt;</span> <span class="mi">1500</span>
+    <span class="n">em_max_iter</span> <span class="o">=</span> <span class="mi">2</span> <span class="k">if</span> <span class="n">is_ci</span> <span class="k">else</span> <span class="mi">5</span>
+
+    <span class="n">em</span> <span class="o">=</span> <span class="n">PontifexEM</span><span class="p">(</span>
+        <span class="n">unk_df</span><span class="o">=</span><span class="n">unk_df</span><span class="p">,</span>
+        <span class="n">ref_df</span><span class="o">=</span><span class="n">ref_df</span><span class="p">,</span>
+        <span class="n">initial_pdfs</span><span class="o">=</span><span class="n">initial_pdfs</span><span class="p">,</span>
+        <span class="n">z_grid_edges</span><span class="o">=</span><span class="n">Z_GRID</span><span class="p">,</span>
+        <span class="n">use_bias_correction</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">floor_val</span><span class="o">=</span><span class="mf">1e-5</span><span class="p">,</span>
+        <span class="n">learning_rate</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span>
+        <span class="n">smoothing_sigma</span><span class="o">=</span><span class="mf">1.0</span>
+    <span class="p">)</span>
+    
+    <span class="n">calibrated_pdfs</span> <span class="o">=</span> <span class="n">em</span><span class="o">.</span><span class="n">optimize</span><span class="p">(</span><span class="n">max_iter</span><span class="o">=</span><span class="n">em_max_iter</span><span class="p">)</span>
+
+    <span class="c1"># 3. Interpolate and normalize onto Z_GRID</span>
+    <span class="n">f_interp</span> <span class="o">=</span> <span class="n">interp1d</span><span class="p">(</span><span class="n">Z_CENTERS</span><span class="p">,</span> <span class="n">calibrated_pdfs</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s1">&#39;linear&#39;</span><span class="p">,</span> <span class="n">fill_value</span><span class="o">=</span><span class="s1">&#39;extrapolate&#39;</span><span class="p">)</span>
+    <span class="n">calibrated_pdfs_301</span> <span class="o">=</span> <span class="n">f_interp</span><span class="p">(</span><span class="n">Z_GRID</span><span class="p">)</span>
+    <span class="n">calibrated_pdfs_301</span> <span class="o">=</span> <span class="n">aion_pz</span><span class="o">.</span><span class="n">_renorm</span><span class="p">(</span><span class="n">calibrated_pdfs_301</span><span class="p">,</span> <span class="n">Z_GRID</span><span class="p">)</span>
+
+    <span class="c1"># 4. Write outputs</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Writing final calibrated PDFs to </span><span class="si">{</span><span class="n">output_file</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">aion_pz</span><span class="o">.</span><span class="n">write_qp</span><span class="p">(</span><span class="n">calibrated_pdfs_301</span><span class="p">,</span> <span class="n">test_dict</span><span class="p">[</span><span class="n">aion_pz</span><span class="o">.</span><span class="n">OBJECT_ID_COL</span><span class="p">],</span> <span class="n">output_file</span><span class="p">,</span> <span class="n">z_grid</span><span class="o">=</span><span class="n">Z_GRID</span><span class="p">)</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, The Pontifex Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

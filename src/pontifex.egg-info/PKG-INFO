@@ -1,0 +1,48 @@
+Metadata-Version: 2.4
+Name: pontifex
+Version: 0.1.0
+Summary: Pontifex: Footprint-corrected photometric redshift pipeline for LSST DESC
+Author: The Pontifex Team
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Science/Research
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Topic :: Scientific/Engineering :: Astronomy
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: numpy<2
+Requires-Dist: pandas
+Requires-Dist: astropy<7
+Requires-Dist: matplotlib
+Requires-Dist: scipy
+Requires-Dist: scikit-learn
+Requires-Dist: joblib
+Requires-Dist: minisom
+Requires-Dist: tables_io<1.1
+Requires-Dist: qp-prob<1.0
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: ruff; extra == "dev"
+Requires-Dist: black; extra == "dev"
+Provides-Extra: docs
+Requires-Dist: sphinx; extra == "docs"
+Requires-Dist: sphinx_rtd_theme; extra == "docs"
+Requires-Dist: sphinx-autoapi; extra == "docs"
+Dynamic: license-file
+
+# Pontifex
+
+Modular, footprint-corrected photometric redshift estimation pipeline for LSST DESC.
+
+## Installation
+
+```bash
+pip install -e .
+```
+
+## Features
+
+- **Committee of Experts**: Integrates multiple RAIL estimators combined via local KNN gating.
+- **Footprint-Correction**: Using SkyKatana masks.
+- **Spatial Clustering Calibration**: Dynamic EM optimization using Nugundam 3D spatial cross-correlations.

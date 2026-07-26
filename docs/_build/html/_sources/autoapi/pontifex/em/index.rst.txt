@@ -1,0 +1,114 @@
+pontifex.em
+===========
+
+.. py:module:: pontifex.em
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   pontifex.em.logger
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   pontifex.em.PontifexEM
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   pontifex.em.generate_footprint_randoms_combined
+
+
+Module Contents
+---------------
+
+.. py:data:: logger
+
+.. py:function:: generate_footprint_randoms_combined(ref_df: pandas.DataFrame, unk_df: pandas.DataFrame, columns=('ra', 'dec'), order_sparse=11)
+
+   Generate footprint-corrected random catalogs using SkyKatana.
+   Falls back to bounding box randoms if the catalogs are too small (e.g. in CI)
+   to prevent empty array failures in isolated pixel removal.
+
+
+.. py:class:: PontifexEM(unk_df, ref_df, initial_pdfs, z_grid_edges, cosmo=None, pimax=100.0, unk_rands_df=None, ref_rands_df=None, mc_nreal=5, nthreads=4, use_bias_correction=True, floor_val=1e-05, learning_rate=0.2, smoothing_sigma=1.0)
+
+   Expectation-Maximization (EM) optimization of photometric redshift PDFs
+   using Nugundam clustering cross-correlations and SkyKatana masks.
+
+
+   .. py:attribute:: unk_df
+
+
+   .. py:attribute:: ref_df
+
+
+   .. py:attribute:: initial_pdfs
+
+
+   .. py:attribute:: z_grid_edges
+
+
+   .. py:attribute:: z_bin_centers
+
+
+   .. py:attribute:: pimax
+      :value: 100.0
+
+
+
+   .. py:attribute:: mc_nreal
+      :value: 5
+
+
+
+   .. py:attribute:: nthreads
+      :value: 4
+
+
+
+   .. py:attribute:: use_bias_correction
+      :value: True
+
+
+
+   .. py:attribute:: floor_val
+      :value: 1e-05
+
+
+
+   .. py:attribute:: learning_rate
+      :value: 0.2
+
+
+
+   .. py:attribute:: smoothing_sigma
+      :value: 1.0
+
+
+
+   .. py:attribute:: target_nz
+      :value: None
+
+
+
+   .. py:attribute:: optimized_pdfs
+      :value: None
+
+
+
+   .. py:method:: compute_target_nz_nugundam(pdfs, seppmin=0.1, dsepp=0.2, nsepp=10)
+
+
+   .. py:method:: optimize(max_iter=5, tol=1e-05, seppmin=0.1, dsepp=0.2, nsepp=10)
+
+

@@ -1,0 +1,433 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>pontifex.em &mdash; Pontifex 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            Pontifex
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Pontifex</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../pontifex.html">pontifex</a></li>
+      <li class="breadcrumb-item active">pontifex.em</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for pontifex.em</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">astropy.table</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">at</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.ndimage</span><span class="w"> </span><span class="kn">import</span> <span class="n">gaussian_filter1d</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">nugundam</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">ng</span>
+
+<div class="viewcode-block" id="logger">
+<a class="viewcode-back" href="../../autoapi/pontifex/em/index.html#pontifex.em.logger">[docs]</a>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="generate_footprint_randoms_combined">
+<a class="viewcode-back" href="../../autoapi/pontifex/em/index.html#pontifex.em.generate_footprint_randoms_combined">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">generate_footprint_randoms_combined</span><span class="p">(</span><span class="n">ref_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">unk_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="p">(</span><span class="s1">&#39;ra&#39;</span><span class="p">,</span> <span class="s1">&#39;dec&#39;</span><span class="p">),</span> <span class="n">order_sparse</span><span class="o">=</span><span class="mi">11</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generate footprint-corrected random catalogs using SkyKatana.</span>
+<span class="sd">    Falls back to bounding box randoms if the catalogs are too small (e.g. in CI)</span>
+<span class="sd">    to prevent empty array failures in isolated pixel removal.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">combined</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">([</span><span class="n">ref_df</span><span class="p">[[</span><span class="s1">&#39;ra&#39;</span><span class="p">,</span> <span class="s1">&#39;dec&#39;</span><span class="p">]],</span> <span class="n">unk_df</span><span class="p">[[</span><span class="s1">&#39;ra&#39;</span><span class="p">,</span> <span class="s1">&#39;dec&#39;</span><span class="p">]]],</span> <span class="n">ignore_index</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">combined</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">1500</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Catalog size too small for sparse footprint masking. Falling back to uniform bounding box randoms.&quot;</span><span class="p">)</span>
+        <span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">42</span><span class="p">)</span>
+        <span class="n">ra_min</span><span class="p">,</span> <span class="n">ra_max</span> <span class="o">=</span> <span class="n">combined</span><span class="p">[</span><span class="s1">&#39;ra&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">min</span><span class="p">(),</span> <span class="n">combined</span><span class="p">[</span><span class="s1">&#39;ra&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
+        <span class="n">dec_min</span><span class="p">,</span> <span class="n">dec_max</span> <span class="o">=</span> <span class="n">combined</span><span class="p">[</span><span class="s1">&#39;dec&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">min</span><span class="p">(),</span> <span class="n">combined</span><span class="p">[</span><span class="s1">&#39;dec&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
+        
+        <span class="n">ref_rands</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+            <span class="s1">&#39;ra&#39;</span><span class="p">:</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">ra_min</span><span class="p">,</span> <span class="n">ra_max</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">ref_df</span><span class="p">)</span> <span class="o">*</span> <span class="mi">3</span><span class="p">),</span>
+            <span class="s1">&#39;dec&#39;</span><span class="p">:</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">dec_min</span><span class="p">,</span> <span class="n">dec_max</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">ref_df</span><span class="p">)</span> <span class="o">*</span> <span class="mi">3</span><span class="p">)</span>
+        <span class="p">})</span>
+        <span class="n">unk_rands</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+            <span class="s1">&#39;ra&#39;</span><span class="p">:</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">ra_min</span><span class="p">,</span> <span class="n">ra_max</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">unk_df</span><span class="p">)</span> <span class="o">*</span> <span class="mi">3</span><span class="p">),</span>
+            <span class="s1">&#39;dec&#39;</span><span class="p">:</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">dec_min</span><span class="p">,</span> <span class="n">dec_max</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">unk_df</span><span class="p">)</span> <span class="o">*</span> <span class="mi">3</span><span class="p">)</span>
+        <span class="p">})</span>
+        <span class="k">return</span> <span class="n">ref_rands</span><span class="p">,</span> <span class="n">unk_rands</span>
+        
+    <span class="k">try</span><span class="p">:</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">skykatana</span><span class="w"> </span><span class="kn">import</span> <span class="n">SkyMaskPipe</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Building SkyKatana footprint mask on combined sample...&quot;</span><span class="p">)</span>
+        <span class="n">pipe</span> <span class="o">=</span> <span class="n">SkyMaskPipe</span><span class="p">(</span><span class="n">order_out</span><span class="o">=</span><span class="mi">13</span><span class="p">)</span>
+        <span class="n">pipe</span><span class="o">.</span><span class="n">build_foot_mask</span><span class="p">(</span><span class="n">combined</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="n">columns</span><span class="p">,</span> <span class="n">order_sparse</span><span class="o">=</span><span class="n">order_sparse</span><span class="p">,</span> <span class="n">remove_isopixels</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">erode_borders</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Generating footprint-corrected random catalogs...&quot;</span><span class="p">)</span>
+        <span class="n">ref_rands</span> <span class="o">=</span> <span class="n">pipe</span><span class="o">.</span><span class="n">makerans</span><span class="p">(</span><span class="n">stage</span><span class="o">=</span><span class="s1">&#39;footmask&#39;</span><span class="p">,</span> <span class="n">nr</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">ref_df</span><span class="p">)</span> <span class="o">*</span> <span class="mi">3</span><span class="p">)</span>
+        <span class="n">unk_rands</span> <span class="o">=</span> <span class="n">pipe</span><span class="o">.</span><span class="n">makerans</span><span class="p">(</span><span class="n">stage</span><span class="o">=</span><span class="s1">&#39;footmask&#39;</span><span class="p">,</span> <span class="n">nr</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">unk_df</span><span class="p">)</span> <span class="o">*</span> <span class="mi">3</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">ref_rands</span><span class="p">,</span> <span class="n">unk_rands</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;SkyKatana footprint masking failed with: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">. Falling back to uniform bounding box randoms.&quot;</span><span class="p">)</span>
+        <span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">42</span><span class="p">)</span>
+        <span class="n">ra_min</span><span class="p">,</span> <span class="n">ra_max</span> <span class="o">=</span> <span class="n">combined</span><span class="p">[</span><span class="s1">&#39;ra&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">min</span><span class="p">(),</span> <span class="n">combined</span><span class="p">[</span><span class="s1">&#39;ra&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
+        <span class="n">dec_min</span><span class="p">,</span> <span class="n">dec_max</span> <span class="o">=</span> <span class="n">combined</span><span class="p">[</span><span class="s1">&#39;dec&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">min</span><span class="p">(),</span> <span class="n">combined</span><span class="p">[</span><span class="s1">&#39;dec&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
+        
+        <span class="n">ref_rands</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+            <span class="s1">&#39;ra&#39;</span><span class="p">:</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">ra_min</span><span class="p">,</span> <span class="n">ra_max</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">ref_df</span><span class="p">)</span> <span class="o">*</span> <span class="mi">3</span><span class="p">),</span>
+            <span class="s1">&#39;dec&#39;</span><span class="p">:</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">dec_min</span><span class="p">,</span> <span class="n">dec_max</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">ref_df</span><span class="p">)</span> <span class="o">*</span> <span class="mi">3</span><span class="p">)</span>
+        <span class="p">})</span>
+        <span class="n">unk_rands</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+            <span class="s1">&#39;ra&#39;</span><span class="p">:</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">ra_min</span><span class="p">,</span> <span class="n">ra_max</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">unk_df</span><span class="p">)</span> <span class="o">*</span> <span class="mi">3</span><span class="p">),</span>
+            <span class="s1">&#39;dec&#39;</span><span class="p">:</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">dec_min</span><span class="p">,</span> <span class="n">dec_max</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">unk_df</span><span class="p">)</span> <span class="o">*</span> <span class="mi">3</span><span class="p">)</span>
+        <span class="p">})</span>
+        <span class="k">return</span> <span class="n">ref_rands</span><span class="p">,</span> <span class="n">unk_rands</span></div>
+
+
+
+<div class="viewcode-block" id="PontifexEM">
+<a class="viewcode-back" href="../../autoapi/pontifex/em/index.html#pontifex.em.PontifexEM">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">PontifexEM</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Expectation-Maximization (EM) optimization of photometric redshift PDFs</span>
+<span class="sd">    using Nugundam clustering cross-correlations and SkyKatana masks.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">unk_df</span><span class="p">,</span>
+        <span class="n">ref_df</span><span class="p">,</span>
+        <span class="n">initial_pdfs</span><span class="p">,</span>
+        <span class="n">z_grid_edges</span><span class="p">,</span>
+        <span class="n">cosmo</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">pimax</span><span class="o">=</span><span class="mf">100.0</span><span class="p">,</span>
+        <span class="n">unk_rands_df</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">ref_rands_df</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">mc_nreal</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+        <span class="n">nthreads</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+        <span class="n">use_bias_correction</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">floor_val</span><span class="o">=</span><span class="mf">1e-5</span><span class="p">,</span>
+        <span class="n">learning_rate</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span>
+        <span class="n">smoothing_sigma</span><span class="o">=</span><span class="mf">1.0</span>
+    <span class="p">):</span>
+<div class="viewcode-block" id="PontifexEM.unk_df">
+<a class="viewcode-back" href="../../autoapi/pontifex/em/index.html#pontifex.em.PontifexEM.unk_df">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">unk_df</span> <span class="o">=</span> <span class="n">unk_df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="PontifexEM.ref_df">
+<a class="viewcode-back" href="../../autoapi/pontifex/em/index.html#pontifex.em.PontifexEM.ref_df">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ref_df</span> <span class="o">=</span> <span class="n">ref_df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="PontifexEM.initial_pdfs">
+<a class="viewcode-back" href="../../autoapi/pontifex/em/index.html#pontifex.em.PontifexEM.initial_pdfs">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">initial_pdfs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">initial_pdfs</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="PontifexEM.z_grid_edges">
+<a class="viewcode-back" href="../../autoapi/pontifex/em/index.html#pontifex.em.PontifexEM.z_grid_edges">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">z_grid_edges</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">z_grid_edges</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="PontifexEM.z_bin_centers">
+<a class="viewcode-back" href="../../autoapi/pontifex/em/index.html#pontifex.em.PontifexEM.z_bin_centers">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">z_bin_centers</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">z_grid_edges</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">z_grid_edges</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span></div>
+
+        
+        <span class="k">if</span> <span class="n">cosmo</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># Default to LSST DESC standard cosmology</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cosmo</span> <span class="o">=</span> <span class="n">ng</span><span class="o">.</span><span class="n">DistanceSpec</span><span class="p">(</span><span class="n">calcdist</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">h0</span><span class="o">=</span><span class="mf">67.27</span><span class="p">,</span> <span class="n">omegam</span><span class="o">=</span><span class="mf">0.3121</span><span class="p">,</span> <span class="n">omegal</span><span class="o">=</span><span class="mf">0.6879</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cosmo</span> <span class="o">=</span> <span class="n">cosmo</span>
+            
+<div class="viewcode-block" id="PontifexEM.pimax">
+<a class="viewcode-back" href="../../autoapi/pontifex/em/index.html#pontifex.em.PontifexEM.pimax">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pimax</span> <span class="o">=</span> <span class="n">pimax</span></div>
+
+<div class="viewcode-block" id="PontifexEM.mc_nreal">
+<a class="viewcode-back" href="../../autoapi/pontifex/em/index.html#pontifex.em.PontifexEM.mc_nreal">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mc_nreal</span> <span class="o">=</span> <span class="n">mc_nreal</span></div>
+
+<div class="viewcode-block" id="PontifexEM.nthreads">
+<a class="viewcode-back" href="../../autoapi/pontifex/em/index.html#pontifex.em.PontifexEM.nthreads">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nthreads</span> <span class="o">=</span> <span class="n">nthreads</span></div>
+
+<div class="viewcode-block" id="PontifexEM.use_bias_correction">
+<a class="viewcode-back" href="../../autoapi/pontifex/em/index.html#pontifex.em.PontifexEM.use_bias_correction">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">use_bias_correction</span> <span class="o">=</span> <span class="n">use_bias_correction</span></div>
+
+<div class="viewcode-block" id="PontifexEM.floor_val">
+<a class="viewcode-back" href="../../autoapi/pontifex/em/index.html#pontifex.em.PontifexEM.floor_val">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">floor_val</span> <span class="o">=</span> <span class="n">floor_val</span></div>
+
+<div class="viewcode-block" id="PontifexEM.learning_rate">
+<a class="viewcode-back" href="../../autoapi/pontifex/em/index.html#pontifex.em.PontifexEM.learning_rate">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">learning_rate</span> <span class="o">=</span> <span class="n">learning_rate</span></div>
+
+<div class="viewcode-block" id="PontifexEM.smoothing_sigma">
+<a class="viewcode-back" href="../../autoapi/pontifex/em/index.html#pontifex.em.PontifexEM.smoothing_sigma">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">smoothing_sigma</span> <span class="o">=</span> <span class="n">smoothing_sigma</span></div>
+
+        
+        <span class="c1"># Verify sizes</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">unk_df</span><span class="p">)</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">initial_pdfs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Rows in unk_df (</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">unk_df</span><span class="p">)</span><span class="si">}</span><span class="s2">) != initial_pdfs rows (</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">initial_pdfs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">z_bin_centers</span><span class="p">)</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">initial_pdfs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Z bins (</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">z_bin_centers</span><span class="p">)</span><span class="si">}</span><span class="s2">) != initial_pdfs cols (</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">initial_pdfs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+            
+        <span class="c1"># Build randoms using SkyKatana footprint-correction if not provided</span>
+        <span class="k">if</span> <span class="n">ref_rands_df</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">unk_rands_df</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ref_rands_df</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">unk_rands_df</span> <span class="o">=</span> <span class="n">generate_footprint_randoms_combined</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ref_df</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">unk_df</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ref_rands_df</span> <span class="o">=</span> <span class="n">ref_rands_df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">unk_rands_df</span> <span class="o">=</span> <span class="n">unk_rands_df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            
+        <span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">1234</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s1">&#39;ztrue&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">ref_rands_df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ref_rands_df</span><span class="p">[</span><span class="s1">&#39;ztrue&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ref_df</span><span class="p">[</span><span class="s1">&#39;ztrue&#39;</span><span class="p">],</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ref_rands_df</span><span class="p">))</span>
+        <span class="k">if</span> <span class="s1">&#39;ztrue&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">unk_rands_df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">unk_rands_df</span><span class="p">[</span><span class="s1">&#39;ztrue&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ref_df</span><span class="p">[</span><span class="s1">&#39;ztrue&#39;</span><span class="p">],</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">unk_rands_df</span><span class="p">))</span>
+            
+<div class="viewcode-block" id="PontifexEM.target_nz">
+<a class="viewcode-back" href="../../autoapi/pontifex/em/index.html#pontifex.em.PontifexEM.target_nz">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">target_nz</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+<div class="viewcode-block" id="PontifexEM.optimized_pdfs">
+<a class="viewcode-back" href="../../autoapi/pontifex/em/index.html#pontifex.em.PontifexEM.optimized_pdfs">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">optimized_pdfs</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="PontifexEM.compute_target_nz_nugundam">
+<a class="viewcode-back" href="../../autoapi/pontifex/em/index.html#pontifex.em.PontifexEM.compute_target_nz_nugundam">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">compute_target_nz_nugundam</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pdfs</span><span class="p">,</span> <span class="n">seppmin</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">dsepp</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span> <span class="n">nsepp</span><span class="o">=</span><span class="mi">10</span><span class="p">):</span>
+        <span class="n">unk</span> <span class="o">=</span> <span class="n">at</span><span class="o">.</span><span class="n">Table</span><span class="o">.</span><span class="n">from_pandas</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">unk_df</span><span class="p">)</span>
+        <span class="n">ref</span> <span class="o">=</span> <span class="n">at</span><span class="o">.</span><span class="n">Table</span><span class="o">.</span><span class="n">from_pandas</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ref_df</span><span class="p">)</span>
+        <span class="n">unk_rand</span> <span class="o">=</span> <span class="n">at</span><span class="o">.</span><span class="n">Table</span><span class="o">.</span><span class="n">from_pandas</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">unk_rands_df</span><span class="p">)</span>
+        <span class="n">ref_rand</span> <span class="o">=</span> <span class="n">at</span><span class="o">.</span><span class="n">Table</span><span class="o">.</span><span class="n">from_pandas</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ref_rands_df</span><span class="p">)</span>
+        
+        <span class="n">n_bins</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">z_grid_edges</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="n">n_clust</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_bins</span><span class="p">)</span>
+        
+        <span class="n">binning</span> <span class="o">=</span> <span class="n">ng</span><span class="o">.</span><span class="n">ProjectedBinning</span><span class="o">.</span><span class="n">from_binsize</span><span class="p">(</span>
+            <span class="n">nsepp</span><span class="o">=</span><span class="n">nsepp</span><span class="p">,</span> <span class="n">seppmin</span><span class="o">=</span><span class="n">seppmin</span><span class="p">,</span> <span class="n">dsepp</span><span class="o">=</span><span class="n">dsepp</span><span class="p">,</span> <span class="n">logsepp</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">nsepv</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">dsepv</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">pimax</span>
+        <span class="p">)</span>
+        
+        <span class="n">cfg_cross</span> <span class="o">=</span> <span class="n">ng</span><span class="o">.</span><span class="n">ProjectedCrossConfig</span><span class="p">(</span>
+            <span class="n">estimator</span><span class="o">=</span><span class="s2">&quot;LS&quot;</span><span class="p">,</span>
+            <span class="n">columns_data1</span><span class="o">=</span><span class="n">ng</span><span class="o">.</span><span class="n">ProjectedCatalogColumns</span><span class="p">(</span><span class="n">ra</span><span class="o">=</span><span class="s2">&quot;ra&quot;</span><span class="p">,</span> <span class="n">dec</span><span class="o">=</span><span class="s2">&quot;dec&quot;</span><span class="p">,</span> <span class="n">redshift</span><span class="o">=</span><span class="kc">None</span><span class="p">),</span>
+            <span class="n">columns_random1</span><span class="o">=</span><span class="n">ng</span><span class="o">.</span><span class="n">ProjectedCatalogColumns</span><span class="p">(</span><span class="n">ra</span><span class="o">=</span><span class="s2">&quot;ra&quot;</span><span class="p">,</span> <span class="n">dec</span><span class="o">=</span><span class="s2">&quot;dec&quot;</span><span class="p">,</span> <span class="n">redshift</span><span class="o">=</span><span class="s2">&quot;ztrue&quot;</span><span class="p">),</span>
+            <span class="n">columns_data2</span><span class="o">=</span><span class="n">ng</span><span class="o">.</span><span class="n">ProjectedCatalogColumns</span><span class="p">(</span><span class="n">ra</span><span class="o">=</span><span class="s2">&quot;ra&quot;</span><span class="p">,</span> <span class="n">dec</span><span class="o">=</span><span class="s2">&quot;dec&quot;</span><span class="p">,</span> <span class="n">redshift</span><span class="o">=</span><span class="s2">&quot;ztrue&quot;</span><span class="p">),</span>
+            <span class="n">columns_random2</span><span class="o">=</span><span class="n">ng</span><span class="o">.</span><span class="n">ProjectedCatalogColumns</span><span class="p">(</span><span class="n">ra</span><span class="o">=</span><span class="s2">&quot;ra&quot;</span><span class="p">,</span> <span class="n">dec</span><span class="o">=</span><span class="s2">&quot;dec&quot;</span><span class="p">,</span> <span class="n">redshift</span><span class="o">=</span><span class="s2">&quot;ztrue&quot;</span><span class="p">),</span>
+            <span class="n">nthreads</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">nthreads</span><span class="p">,</span>
+            <span class="n">binning</span><span class="o">=</span><span class="n">binning</span><span class="p">,</span>
+            <span class="n">grid</span><span class="o">=</span><span class="n">ng</span><span class="o">.</span><span class="n">ProjectedGridSpec</span><span class="p">(</span><span class="n">autogrid</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">pxorder</span><span class="o">=</span><span class="s2">&quot;natural&quot;</span><span class="p">),</span>
+            <span class="n">distance</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">cosmo</span>
+        <span class="p">)</span>
+        <span class="n">cfg_cross</span><span class="o">.</span><span class="n">mc_pdf</span><span class="o">.</span><span class="n">enabled</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="n">cfg_cross</span><span class="o">.</span><span class="n">mc_pdf</span><span class="o">.</span><span class="n">sample_within_bin</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="n">cfg_cross</span><span class="o">.</span><span class="n">mc_pdf</span><span class="o">.</span><span class="n">nreal</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mc_nreal</span>
+        <span class="n">cfg_cross</span><span class="o">.</span><span class="n">mc_pdf</span><span class="o">.</span><span class="n">z_grid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">z_grid_edges</span>
+        <span class="n">cfg_cross</span><span class="o">.</span><span class="n">mc_pdf</span><span class="o">.</span><span class="n">grid_kind</span> <span class="o">=</span> <span class="s1">&#39;edges&#39;</span>
+        <span class="n">cfg_cross</span><span class="o">.</span><span class="n">mc_pdf</span><span class="o">.</span><span class="n">pdf_data1</span> <span class="o">=</span> <span class="n">ng</span><span class="o">.</span><span class="n">PDFSourceSpec</span><span class="p">(</span><span class="n">kind</span><span class="o">=</span><span class="s2">&quot;external_matrix&quot;</span><span class="p">,</span> <span class="n">matrix</span><span class="o">=</span><span class="n">pdfs</span><span class="p">)</span>
+        <span class="n">cfg_cross</span><span class="o">.</span><span class="n">mc_pdf</span><span class="o">.</span><span class="n">store_realizations</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">cfg_cross</span><span class="o">.</span><span class="n">mc_pdf</span><span class="o">.</span><span class="n">resampling_backend</span> <span class="o">=</span> <span class="s2">&quot;fast&quot;</span>
+        <span class="n">cfg_cross</span><span class="o">.</span><span class="n">mc_pdf</span><span class="o">.</span><span class="n">resampling_random_policy</span> <span class="o">=</span> <span class="s2">&quot;fixed&quot;</span>
+        <span class="n">cfg_cross</span><span class="o">.</span><span class="n">progress</span><span class="o">.</span><span class="n">enabled</span> <span class="o">=</span> <span class="kc">False</span>
+        
+        <span class="n">cfg_auto</span> <span class="o">=</span> <span class="n">ng</span><span class="o">.</span><span class="n">ProjectedAutoConfig</span><span class="p">(</span>
+            <span class="n">estimator</span><span class="o">=</span><span class="s2">&quot;LS&quot;</span><span class="p">,</span>
+            <span class="n">columns_data</span><span class="o">=</span><span class="n">ng</span><span class="o">.</span><span class="n">ProjectedCatalogColumns</span><span class="p">(</span><span class="n">ra</span><span class="o">=</span><span class="s2">&quot;ra&quot;</span><span class="p">,</span> <span class="n">dec</span><span class="o">=</span><span class="s2">&quot;dec&quot;</span><span class="p">,</span> <span class="n">redshift</span><span class="o">=</span><span class="s2">&quot;ztrue&quot;</span><span class="p">),</span>
+            <span class="n">columns_random</span><span class="o">=</span><span class="n">ng</span><span class="o">.</span><span class="n">ProjectedCatalogColumns</span><span class="p">(</span><span class="n">ra</span><span class="o">=</span><span class="s2">&quot;ra&quot;</span><span class="p">,</span> <span class="n">dec</span><span class="o">=</span><span class="s2">&quot;dec&quot;</span><span class="p">,</span> <span class="n">redshift</span><span class="o">=</span><span class="s2">&quot;ztrue&quot;</span><span class="p">),</span>
+            <span class="n">nthreads</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">nthreads</span><span class="p">,</span>
+            <span class="n">binning</span><span class="o">=</span><span class="n">binning</span><span class="p">,</span>
+            <span class="n">grid</span><span class="o">=</span><span class="n">ng</span><span class="o">.</span><span class="n">ProjectedGridSpec</span><span class="p">(</span><span class="n">autogrid</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">pxorder</span><span class="o">=</span><span class="s2">&quot;natural&quot;</span><span class="p">),</span>
+            <span class="n">distance</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">cosmo</span>
+        <span class="p">)</span>
+        <span class="n">cfg_auto</span><span class="o">.</span><span class="n">progress</span><span class="o">.</span><span class="n">enabled</span> <span class="o">=</span> <span class="kc">False</span>
+        
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_bins</span><span class="p">):</span>
+            <span class="n">z_low</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">z_grid_edges</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+            <span class="n">z_high</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">z_grid_edges</span><span class="p">[</span><span class="n">k</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span>
+            
+            <span class="n">mask_ref</span> <span class="o">=</span> <span class="p">(</span><span class="n">ref</span><span class="p">[</span><span class="s1">&#39;ztrue&#39;</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">z_low</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">ref</span><span class="p">[</span><span class="s1">&#39;ztrue&#39;</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">z_high</span><span class="p">)</span>
+            <span class="n">mask_ref_rand</span> <span class="o">=</span> <span class="p">(</span><span class="n">ref_rand</span><span class="p">[</span><span class="s1">&#39;ztrue&#39;</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">z_low</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">ref_rand</span><span class="p">[</span><span class="s1">&#39;ztrue&#39;</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">z_high</span><span class="p">)</span>
+            
+            <span class="n">ref_bin</span> <span class="o">=</span> <span class="n">ref</span><span class="p">[</span><span class="n">mask_ref</span><span class="p">]</span>
+            <span class="n">ref_rand_bin</span> <span class="o">=</span> <span class="n">ref_rand</span><span class="p">[</span><span class="n">mask_ref_rand</span><span class="p">]</span>
+            
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">ref_bin</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">5</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">ref_rand_bin</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">10</span><span class="p">:</span>
+                <span class="n">n_clust</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">floor_val</span>
+                <span class="k">continue</span>
+                
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">res_cross</span> <span class="o">=</span> <span class="n">ng</span><span class="o">.</span><span class="n">pccf</span><span class="p">(</span><span class="n">unk</span><span class="p">,</span> <span class="n">ref_bin</span><span class="p">,</span> <span class="n">cfg_cross</span><span class="p">,</span> <span class="n">random1</span><span class="o">=</span><span class="n">unk_rand</span><span class="p">,</span> <span class="n">random2</span><span class="o">=</span><span class="n">ref_rand_bin</span><span class="p">)</span>
+                <span class="n">w_cross</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">res_cross</span><span class="o">.</span><span class="n">wp</span><span class="p">)</span>
+                <span class="n">w_cross_sum</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">w_cross</span><span class="p">)</span>
+                
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_bias_correction</span><span class="p">:</span>
+                    <span class="n">res_auto</span> <span class="o">=</span> <span class="n">ng</span><span class="o">.</span><span class="n">pcf</span><span class="p">(</span><span class="n">ref_bin</span><span class="p">,</span> <span class="n">ref_rand_bin</span><span class="p">,</span> <span class="n">cfg_auto</span><span class="p">)</span>
+                    <span class="n">w_auto</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">res_auto</span><span class="o">.</span><span class="n">wp</span><span class="p">)</span>
+                    <span class="n">w_auto_sum</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">w_auto</span><span class="p">)</span>
+                    
+                    <span class="n">denom</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">([</span><span class="n">w_auto_sum</span><span class="p">,</span> <span class="mf">1e-5</span><span class="p">]))</span>
+                    <span class="n">n_clust</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">w_cross_sum</span> <span class="o">/</span> <span class="n">denom</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">n_clust</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">w_cross_sum</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error computing correlation in bin </span><span class="si">{</span><span class="n">k</span><span class="si">}</span><span class="s2"> ([</span><span class="si">{</span><span class="n">z_low</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">z_high</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">]): </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="n">n_clust</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">floor_val</span>
+                
+        <span class="n">nans</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">n_clust</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">nans</span><span class="p">):</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">n_clust</span><span class="p">))</span>
+            <span class="n">n_clust</span><span class="p">[</span><span class="n">nans</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">interp</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="n">nans</span><span class="p">],</span> <span class="n">x</span><span class="p">[</span><span class="o">~</span><span class="n">nans</span><span class="p">],</span> <span class="n">n_clust</span><span class="p">[</span><span class="o">~</span><span class="n">nans</span><span class="p">])</span>
+            
+        <span class="n">n_clust</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">n_clust</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">floor_val</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">n_clust</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">n_clust</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="PontifexEM.optimize">
+<a class="viewcode-back" href="../../autoapi/pontifex/em/index.html#pontifex.em.PontifexEM.optimize">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">optimize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">max_iter</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">1e-5</span><span class="p">,</span> <span class="n">seppmin</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">dsepp</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span> <span class="n">nsepp</span><span class="o">=</span><span class="mi">10</span><span class="p">):</span>
+        <span class="n">current_pdfs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">initial_pdfs</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">eps</span> <span class="o">=</span> <span class="mf">1e-15</span>
+        
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Starting EM optimization using nugundam (max_iter=</span><span class="si">{</span><span class="n">max_iter</span><span class="si">}</span><span class="s2">, tol=</span><span class="si">{</span><span class="n">tol</span><span class="si">:</span><span class="s2">.2e</span><span class="si">}</span><span class="s2">)...&quot;</span><span class="p">)</span>
+        
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_iter</span><span class="p">):</span>
+            <span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">1234</span> <span class="o">+</span> <span class="n">i</span><span class="p">)</span>
+            <span class="c1"># Sampling redshift based on current PDF</span>
+            <span class="n">z_samples</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">pdf</span> <span class="ow">in</span> <span class="n">current_pdfs</span><span class="p">:</span>
+                <span class="n">p</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">pdf</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                <span class="n">p</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan_to_num</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">nan</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">posinf</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">neginf</span><span class="o">=</span><span class="mf">0.0</span><span class="p">)</span>
+                <span class="n">p</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
+                <span class="n">p_sum</span> <span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">p_sum</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">p</span> <span class="o">/=</span> <span class="n">p_sum</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">p</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">p</span><span class="p">)</span>
+                <span class="n">p</span> <span class="o">=</span> <span class="n">p</span> <span class="o">/</span> <span class="n">p</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+                <span class="n">p</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">-</span> <span class="n">p</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+                <span class="n">z_samples</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">rng</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">z_bin_centers</span><span class="p">,</span> <span class="n">p</span><span class="o">=</span><span class="n">p</span><span class="p">))</span>
+                
+            <span class="bp">self</span><span class="o">.</span><span class="n">unk_rands_df</span><span class="p">[</span><span class="s1">&#39;ztrue&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">z_samples</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">unk_rands_df</span><span class="p">))</span>
+            
+            <span class="n">target_nz</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">compute_target_nz_nugundam</span><span class="p">(</span>
+                <span class="n">pdfs</span><span class="o">=</span><span class="n">current_pdfs</span><span class="p">,</span>
+                <span class="n">seppmin</span><span class="o">=</span><span class="n">seppmin</span><span class="p">,</span>
+                <span class="n">dsepp</span><span class="o">=</span><span class="n">dsepp</span><span class="p">,</span>
+                <span class="n">nsepp</span><span class="o">=</span><span class="n">nsepp</span>
+            <span class="p">)</span>
+            
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">smoothing_sigma</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">target_nz</span> <span class="o">=</span> <span class="n">gaussian_filter1d</span><span class="p">(</span><span class="n">target_nz</span><span class="p">,</span> <span class="n">sigma</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">smoothing_sigma</span><span class="p">)</span>
+                <span class="n">target_nz</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">target_nz</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">floor_val</span><span class="p">)</span>
+                <span class="n">target_nz</span> <span class="o">=</span> <span class="n">target_nz</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">target_nz</span><span class="p">)</span>
+                
+            <span class="n">current_nz</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">current_pdfs</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">current_nz</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">current_nz</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span> <span class="n">eps</span><span class="p">,</span> <span class="n">current_nz</span><span class="p">)</span>
+            <span class="n">current_nz</span> <span class="o">=</span> <span class="n">current_nz</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">current_nz</span><span class="p">)</span>
+            
+            <span class="n">ratio</span> <span class="o">=</span> <span class="p">(</span><span class="n">target_nz</span> <span class="o">/</span> <span class="n">current_nz</span><span class="p">)</span> <span class="o">**</span> <span class="bp">self</span><span class="o">.</span><span class="n">learning_rate</span>
+            <span class="n">new_pdfs</span> <span class="o">=</span> <span class="n">current_pdfs</span> <span class="o">*</span> <span class="n">ratio</span>
+            
+            <span class="n">new_pdfs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan_to_num</span><span class="p">(</span><span class="n">new_pdfs</span><span class="p">,</span> <span class="n">nan</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">posinf</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">neginf</span><span class="o">=</span><span class="mf">0.0</span><span class="p">)</span>
+            <span class="n">new_pdfs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">new_pdfs</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
+            <span class="n">row_sums</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">new_pdfs</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="n">row_sums</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">row_sums</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span> <span class="n">eps</span><span class="p">,</span> <span class="n">row_sums</span><span class="p">)</span>
+            <span class="n">new_pdfs</span> <span class="o">=</span> <span class="n">new_pdfs</span> <span class="o">/</span> <span class="n">row_sums</span>
+            
+            <span class="n">diff</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">((</span><span class="n">new_pdfs</span> <span class="o">-</span> <span class="n">current_pdfs</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">))</span>
+            <span class="n">current_pdfs</span> <span class="o">=</span> <span class="n">new_pdfs</span>
+            
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[Iteration </span><span class="si">{</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2">] PDF RMS difference: </span><span class="si">{</span><span class="n">diff</span><span class="si">:</span><span class="s2">.2e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">diff</span> <span class="o">&lt;</span> <span class="n">tol</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;EM converged at iteration </span><span class="si">{</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2"> (diff=</span><span class="si">{</span><span class="n">diff</span><span class="si">:</span><span class="s2">.2e</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+                <span class="k">break</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;EM reached max_iter=</span><span class="si">{</span><span class="n">max_iter</span><span class="si">}</span><span class="s2"> without converging to tol=</span><span class="si">{</span><span class="n">tol</span><span class="si">:</span><span class="s2">.2e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            
+        <span class="bp">self</span><span class="o">.</span><span class="n">optimized_pdfs</span> <span class="o">=</span> <span class="n">current_pdfs</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">optimized_pdfs</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, The Pontifex Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

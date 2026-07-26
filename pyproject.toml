@@ -1,0 +1,48 @@
+[project]
+name = "pontifex"
+version = "0.1.0"
+description = "Pontifex: Footprint-corrected photometric redshift pipeline for LSST DESC"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "The Pontifex Team" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Astronomy"
+]
+dependencies = [
+    "numpy<2",
+    "pandas",
+    "astropy<7",
+    "matplotlib",
+    "scipy",
+    "scikit-learn",
+    "joblib",
+    "minisom",
+    "tables_io<1.1",
+    "qp-prob<1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+    "black"
+]
+docs = [
+    "sphinx",
+    "sphinx_rtd_theme",
+    "sphinx-autoapi"
+]
+
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["pontifex*"]

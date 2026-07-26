@@ -1,0 +1,832 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>pontifex.estimators &mdash; Pontifex 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../_static/graphviz.css?v=4ae1632d" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            Pontifex
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../autoapi/index.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Pontifex</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../pontifex.html">pontifex</a></li>
+      <li class="breadcrumb-item active">pontifex.estimators</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for pontifex.estimators</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Tuple</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">joblib</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.ndimage</span><span class="w"> </span><span class="kn">import</span> <span class="n">gaussian_filter1d</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.interpolate</span><span class="w"> </span><span class="kn">import</span> <span class="n">interp1d</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.neighbors</span><span class="w"> </span><span class="kn">import</span> <span class="n">NearestNeighbors</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.preprocessing</span><span class="w"> </span><span class="kn">import</span> <span class="n">StandardScaler</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.neural_network</span><span class="w"> </span><span class="kn">import</span> <span class="n">MLPClassifier</span>
+
+<span class="c1"># 1. Monkeypatch tables_io and numpy to resolve RAIL/numpy compatibility issues</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">tables_io</span>
+<span class="n">sys</span><span class="o">.</span><span class="n">modules</span><span class="p">[</span><span class="s1">&#39;tables_io.hdf5&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">tables_io</span><span class="o">.</span><span class="n">h5py</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">tables_io.types</span>
+<span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">tables_io</span><span class="o">.</span><span class="n">types</span><span class="p">,</span> <span class="s1">&#39;table_type&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">tables_io</span><span class="o">.</span><span class="n">types</span><span class="p">,</span> <span class="s1">&#39;tableType&#39;</span><span class="p">):</span>
+    <span class="n">tables_io</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">table_type</span> <span class="o">=</span> <span class="n">tables_io</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">tableType</span>
+<span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">tables_io</span><span class="o">.</span><span class="n">types</span><span class="p">,</span> <span class="s1">&#39;file_type&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">tables_io</span><span class="o">.</span><span class="n">types</span><span class="p">,</span> <span class="s1">&#39;fileType&#39;</span><span class="p">):</span>
+    <span class="n">tables_io</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">file_type</span> <span class="o">=</span> <span class="n">tables_io</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">fileType</span>
+<span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">tables_io</span><span class="o">.</span><span class="n">types</span><span class="p">,</span> <span class="s1">&#39;tableType&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">tables_io</span><span class="o">.</span><span class="n">types</span><span class="p">,</span> <span class="s1">&#39;table_type&#39;</span><span class="p">):</span>
+    <span class="n">tables_io</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">tableType</span> <span class="o">=</span> <span class="n">tables_io</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">table_type</span>
+<span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">tables_io</span><span class="o">.</span><span class="n">types</span><span class="p">,</span> <span class="s1">&#39;fileType&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">tables_io</span><span class="o">.</span><span class="n">types</span><span class="p">,</span> <span class="s1">&#39;file_type&#39;</span><span class="p">):</span>
+    <span class="n">tables_io</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">fileType</span> <span class="o">=</span> <span class="n">tables_io</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">file_type</span>
+
+<span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">np</span><span class="p">,</span> <span class="s1">&#39;trapezoid&#39;</span><span class="p">):</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">trapezoid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">trapz</span>
+
+<span class="c1"># 2. Import RAIL stages and MiniSom</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">qp</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rail.core.data</span><span class="w"> </span><span class="kn">import</span> <span class="n">TableHandle</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rail.estimation.algos</span><span class="w"> </span><span class="kn">import</span> <span class="n">sklearn_neurnet</span><span class="p">,</span> <span class="n">k_nearneigh</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rail.estimation.algos.bpz_lite</span><span class="w"> </span><span class="kn">import</span> <span class="n">BPZliteInformer</span><span class="p">,</span> <span class="n">BPZliteEstimator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rail.estimation.algos.flexzboost</span><span class="w"> </span><span class="kn">import</span> <span class="n">FlexZBoostInformer</span><span class="p">,</span> <span class="n">FlexZBoostEstimator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rail.estimation.algos.pzflow_nf</span><span class="w"> </span><span class="kn">import</span> <span class="n">PZFlowInformer</span><span class="p">,</span> <span class="n">PZFlowEstimator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rail.estimation.algos.gpz</span><span class="w"> </span><span class="kn">import</span> <span class="n">GPzInformer</span><span class="p">,</span> <span class="n">GPzEstimator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rail.estimation.algos.lephare</span><span class="w"> </span><span class="kn">import</span> <span class="n">LephareInformer</span><span class="p">,</span> <span class="n">LephareEstimator</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">lephare</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">lp</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">minisom</span><span class="w"> </span><span class="kn">import</span> <span class="n">MiniSom</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">aion_pz</span>
+
+<span class="c1"># Configure loggers for estimators</span>
+<span class="n">FlexZBoostInformer</span><span class="o">.</span><span class="n">log</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;FlexZBoostInformer&quot;</span><span class="p">)</span>
+<span class="n">FlexZBoostEstimator</span><span class="o">.</span><span class="n">log</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;FlexZBoostEstimator&quot;</span><span class="p">)</span>
+<span class="n">GPzInformer</span><span class="o">.</span><span class="n">log</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;GPzInformer&quot;</span><span class="p">)</span>
+<span class="n">GPzEstimator</span><span class="o">.</span><span class="n">log</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;GPzEstimator&quot;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="ZMAX">
+<a class="viewcode-back" href="../../autoapi/pontifex/estimators/index.html#pontifex.estimators.ZMAX">[docs]</a>
+<span class="n">ZMAX</span> <span class="o">=</span> <span class="mf">3.0</span></div>
+
+<div class="viewcode-block" id="NZ">
+<a class="viewcode-back" href="../../autoapi/pontifex/estimators/index.html#pontifex.estimators.NZ">[docs]</a>
+<span class="n">NZ</span> <span class="o">=</span> <span class="mi">301</span></div>
+
+<div class="viewcode-block" id="Z_GRID">
+<a class="viewcode-back" href="../../autoapi/pontifex/estimators/index.html#pontifex.estimators.Z_GRID">[docs]</a>
+<span class="n">Z_GRID</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">ZMAX</span><span class="p">,</span> <span class="n">NZ</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="Z_CENTERS">
+<a class="viewcode-back" href="../../autoapi/pontifex/estimators/index.html#pontifex.estimators.Z_CENTERS">[docs]</a>
+<span class="n">Z_CENTERS</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">Z_GRID</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">Z_GRID</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span></div>
+
+<div class="viewcode-block" id="dz">
+<a class="viewcode-back" href="../../autoapi/pontifex/estimators/index.html#pontifex.estimators.dz">[docs]</a>
+<span class="n">dz</span> <span class="o">=</span> <span class="n">Z_GRID</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">Z_GRID</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span></div>
+
+
+
+<div class="viewcode-block" id="make_clean_stage">
+<a class="viewcode-back" href="../../autoapi/pontifex/estimators/index.html#pontifex.estimators.make_clean_stage">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">make_clean_stage</span><span class="p">(</span><span class="n">stage_class</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Instantiate a RAIL stage, set allow_overwrite=True, and clear its data store.&quot;&quot;&quot;</span>
+    <span class="n">stage</span> <span class="o">=</span> <span class="n">stage_class</span><span class="o">.</span><span class="n">make_stage</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">stage</span><span class="p">,</span> <span class="s2">&quot;data_store&quot;</span><span class="p">):</span>
+        <span class="nb">dict</span><span class="o">.</span><span class="fm">__setattr__</span><span class="p">(</span><span class="n">stage</span><span class="o">.</span><span class="n">data_store</span><span class="p">,</span> <span class="s2">&quot;allow_overwrite&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
+        <span class="n">stage</span><span class="o">.</span><span class="n">data_store</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">stage</span></div>
+
+
+
+<div class="viewcode-block" id="get_bands_and_ref">
+<a class="viewcode-back" href="../../autoapi/pontifex/estimators/index.html#pontifex.estimators.get_bands_and_ref">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_bands_and_ref</span><span class="p">(</span><span class="n">data_keys</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Determine the band list and reference band based on catalog columns.&quot;&quot;&quot;</span>
+    <span class="n">has_roman</span> <span class="o">=</span> <span class="s1">&#39;mag_Y_roman&#39;</span> <span class="ow">in</span> <span class="n">data_keys</span>
+    <span class="n">has_lsst</span> <span class="o">=</span> <span class="s1">&#39;mag_i_lsst&#39;</span> <span class="ow">in</span> <span class="n">data_keys</span> <span class="ow">or</span> <span class="s1">&#39;mag_u_lsst&#39;</span> <span class="ow">in</span> <span class="n">data_keys</span>
+    
+    <span class="k">if</span> <span class="n">has_roman</span> <span class="ow">and</span> <span class="n">has_lsst</span><span class="p">:</span>
+        <span class="n">bands</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;mag_u_lsst&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_g_lsst&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_r_lsst&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_i_lsst&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_z_lsst&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_y_lsst&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_Y_roman&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_J_roman&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_H_roman&#39;</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">bands</span><span class="p">,</span> <span class="s1">&#39;mag_i_lsst&#39;</span><span class="p">,</span> <span class="kc">False</span>
+    <span class="k">elif</span> <span class="n">has_roman</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[</span><span class="s1">&#39;mag_Y_roman&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_J_roman&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_H_roman&#39;</span><span class="p">],</span> <span class="s1">&#39;mag_J_roman&#39;</span><span class="p">,</span> <span class="kc">True</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[</span><span class="s1">&#39;mag_u_lsst&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_g_lsst&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_r_lsst&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_i_lsst&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_z_lsst&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_y_lsst&#39;</span><span class="p">],</span> <span class="s1">&#39;mag_i_lsst&#39;</span><span class="p">,</span> <span class="kc">False</span></div>
+
+
+
+<div class="viewcode-block" id="extract_features">
+<a class="viewcode-back" href="../../autoapi/pontifex/estimators/index.html#pontifex.estimators.extract_features">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">extract_features</span><span class="p">(</span><span class="n">data_dict</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="n">bands</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">ref_band</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extract magnitude and adjacent color features for KNN weighting.&quot;&quot;&quot;</span>
+    <span class="n">features</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">band</span> <span class="ow">in</span> <span class="n">bands</span><span class="p">:</span>
+        <span class="n">mag</span> <span class="o">=</span> <span class="n">data_dict</span><span class="p">[</span><span class="n">band</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">mag</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">mag</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">nanmedian</span><span class="p">(</span><span class="n">mag</span><span class="p">)</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nanmedian</span><span class="p">(</span><span class="n">mag</span><span class="p">))</span> <span class="k">else</span> <span class="mf">99.0</span><span class="p">,</span> <span class="n">mag</span><span class="p">)</span>
+        <span class="n">features</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">mag</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">bands</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="n">col</span> <span class="o">=</span> <span class="p">(</span><span class="n">data_dict</span><span class="p">[</span><span class="n">bands</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span> <span class="o">-</span> <span class="n">data_dict</span><span class="p">[</span><span class="n">bands</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">]])</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">col</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">col</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">nanmedian</span><span class="p">(</span><span class="n">col</span><span class="p">)</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nanmedian</span><span class="p">(</span><span class="n">col</span><span class="p">))</span> <span class="k">else</span> <span class="mf">0.0</span><span class="p">,</span> <span class="n">col</span><span class="p">)</span>
+        <span class="n">features</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">col</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">(</span><span class="n">features</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="get_som_pdfs">
+<a class="viewcode-back" href="../../autoapi/pontifex/estimators/index.html#pontifex.estimators.get_som_pdfs">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_som_pdfs</span><span class="p">(</span><span class="n">train_dict</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="n">test_dict</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
+                 <span class="n">bands</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">ref_band</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">z_grid</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">n_dim</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span> <span class="n">m_dim</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span> <span class="n">max_iter</span><span class="o">=</span><span class="mi">5000</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Train MiniSom and return PDFs on the test set.&quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_features</span><span class="p">(</span><span class="n">d</span><span class="p">):</span>
+        <span class="n">numcols</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">bands</span><span class="p">)</span>
+        <span class="n">coldata</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">d</span><span class="p">[</span><span class="n">ref_band</span><span class="p">])</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">numcols</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="n">tmpcolor</span> <span class="o">=</span> <span class="n">d</span><span class="p">[</span><span class="n">bands</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span> <span class="o">-</span> <span class="n">d</span><span class="p">[</span><span class="n">bands</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">]]</span>
+            <span class="n">coldata</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">((</span><span class="n">coldata</span><span class="p">,</span> <span class="n">tmpcolor</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">coldata</span><span class="o">.</span><span class="n">T</span>
+
+    <span class="n">train_feat</span> <span class="o">=</span> <span class="n">get_features</span><span class="p">(</span><span class="n">train_dict</span><span class="p">)</span>
+    <span class="n">test_feat</span> <span class="o">=</span> <span class="n">get_features</span><span class="p">(</span><span class="n">test_dict</span><span class="p">)</span>
+    <span class="n">train_feat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan_to_num</span><span class="p">(</span><span class="n">train_feat</span><span class="p">,</span> <span class="n">nan</span><span class="o">=</span><span class="mf">25.0</span><span class="p">,</span> <span class="n">posinf</span><span class="o">=</span><span class="mf">25.0</span><span class="p">,</span> <span class="n">neginf</span><span class="o">=</span><span class="mf">25.0</span><span class="p">)</span>
+    <span class="n">test_feat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan_to_num</span><span class="p">(</span><span class="n">test_feat</span><span class="p">,</span> <span class="n">nan</span><span class="o">=</span><span class="mf">25.0</span><span class="p">,</span> <span class="n">posinf</span><span class="o">=</span><span class="mf">25.0</span><span class="p">,</span> <span class="n">neginf</span><span class="o">=</span><span class="mf">25.0</span><span class="p">)</span>
+
+    <span class="n">som</span> <span class="o">=</span> <span class="n">MiniSom</span><span class="p">(</span><span class="n">n_dim</span><span class="p">,</span> <span class="n">m_dim</span><span class="p">,</span> <span class="n">train_feat</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">sigma</span><span class="o">=</span><span class="mf">1.5</span><span class="p">,</span> <span class="n">learning_rate</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">random_seed</span><span class="o">=</span><span class="mi">42</span><span class="p">)</span>
+    <span class="n">som</span><span class="o">.</span><span class="n">pca_weights_init</span><span class="p">(</span><span class="n">train_feat</span><span class="p">)</span>
+    <span class="n">som</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">train_feat</span><span class="p">,</span> <span class="n">max_iter</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+
+    <span class="n">train_winners</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">som</span><span class="o">.</span><span class="n">winner</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">train_feat</span><span class="p">])</span>
+    <span class="n">test_winners</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">som</span><span class="o">.</span><span class="n">winner</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">test_feat</span><span class="p">])</span>
+    <span class="n">train_pixels</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ravel_multi_index</span><span class="p">(</span><span class="n">train_winners</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="p">(</span><span class="n">n_dim</span><span class="p">,</span> <span class="n">m_dim</span><span class="p">))</span>
+    <span class="n">test_pixels</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ravel_multi_index</span><span class="p">(</span><span class="n">test_winners</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="p">(</span><span class="n">n_dim</span><span class="p">,</span> <span class="n">m_dim</span><span class="p">))</span>
+
+    <span class="n">pixel_pdfs</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">global_hist</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">histogram</span><span class="p">(</span><span class="n">train_dict</span><span class="p">[</span><span class="s1">&#39;redshift&#39;</span><span class="p">],</span> <span class="n">bins</span><span class="o">=</span><span class="n">z_grid</span><span class="p">)</span>
+    <span class="n">global_pdf</span> <span class="o">=</span> <span class="n">global_hist</span> <span class="o">/</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">global_hist</span><span class="p">)</span> <span class="o">+</span> <span class="mf">1e-15</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">pix</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_dim</span> <span class="o">*</span> <span class="n">m_dim</span><span class="p">):</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="p">(</span><span class="n">train_pixels</span> <span class="o">==</span> <span class="n">pix</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">mask</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">5</span><span class="p">:</span>
+            <span class="n">hist</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">histogram</span><span class="p">(</span><span class="n">train_dict</span><span class="p">[</span><span class="s1">&#39;redshift&#39;</span><span class="p">][</span><span class="n">mask</span><span class="p">],</span> <span class="n">bins</span><span class="o">=</span><span class="n">z_grid</span><span class="p">)</span>
+            <span class="n">pixel_pdfs</span><span class="p">[</span><span class="n">pix</span><span class="p">]</span> <span class="o">=</span> <span class="n">hist</span> <span class="o">/</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">hist</span><span class="p">)</span> <span class="o">+</span> <span class="mf">1e-15</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">pixel_pdfs</span><span class="p">[</span><span class="n">pix</span><span class="p">]</span> <span class="o">=</span> <span class="n">global_pdf</span>
+
+    <span class="n">test_pdfs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">test_dict</span><span class="p">[</span><span class="s1">&#39;object_id&#39;</span><span class="p">]),</span> <span class="nb">len</span><span class="p">(</span><span class="n">Z_CENTERS</span><span class="p">)))</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">pix</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">test_pixels</span><span class="p">):</span>
+        <span class="n">test_pdfs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">pixel_pdfs</span><span class="p">[</span><span class="n">pix</span><span class="p">]</span>
+
+    <span class="n">test_pdfs</span> <span class="o">=</span> <span class="n">gaussian_filter1d</span><span class="p">(</span><span class="n">test_pdfs</span><span class="p">,</span> <span class="n">sigma</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">row_sums</span> <span class="o">=</span> <span class="n">test_pdfs</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">test_pdfs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">row_sums</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span> <span class="n">test_pdfs</span> <span class="o">/</span> <span class="n">row_sums</span><span class="p">,</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">Z_CENTERS</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">test_pdfs</span></div>
+
+
+
+<div class="viewcode-block" id="compute_expert_weights_knn">
+<a class="viewcode-back" href="../../autoapi/pontifex/estimators/index.html#pontifex.estimators.compute_expert_weights_knn">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">compute_expert_weights_knn</span><span class="p">(</span><span class="n">train_dict</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="n">train_pdfs</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
+                               <span class="n">z_centers</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">bands</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">ref_band</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Calculate point-estimate errors for each expert and prepare features for weighting.&quot;&quot;&quot;</span>
+    <span class="n">train_features</span> <span class="o">=</span> <span class="n">extract_features</span><span class="p">(</span><span class="n">train_dict</span><span class="p">,</span> <span class="n">bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="p">)</span>
+    <span class="n">features_mean</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">train_features</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">features_std</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">train_features</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">features_std</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">features_std</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">features_std</span><span class="p">)</span>
+    <span class="n">train_features_norm</span> <span class="o">=</span> <span class="p">(</span><span class="n">train_features</span> <span class="o">-</span> <span class="n">features_mean</span><span class="p">)</span> <span class="o">/</span> <span class="n">features_std</span>
+
+    <span class="n">train_errors</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">pdf</span> <span class="ow">in</span> <span class="n">train_pdfs</span><span class="p">:</span>
+        <span class="n">z_mode</span> <span class="o">=</span> <span class="n">z_centers</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">pdf</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)]</span>
+        <span class="n">err</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">z_mode</span> <span class="o">-</span> <span class="n">train_dict</span><span class="p">[</span><span class="s1">&#39;redshift&#39;</span><span class="p">])</span> <span class="o">/</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">+</span> <span class="n">train_dict</span><span class="p">[</span><span class="s1">&#39;redshift&#39;</span><span class="p">])</span>
+        <span class="n">train_errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+    <span class="n">train_errors</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">train_errors</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">train_features_norm</span><span class="p">,</span> <span class="n">train_errors</span><span class="p">,</span> <span class="n">features_mean</span><span class="p">,</span> <span class="n">features_std</span></div>
+
+
+
+<div class="viewcode-block" id="apply_expert_weights_knn">
+<a class="viewcode-back" href="../../autoapi/pontifex/estimators/index.html#pontifex.estimators.apply_expert_weights_knn">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">apply_expert_weights_knn</span><span class="p">(</span><span class="n">val_dict</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="n">val_pdfs</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
+                             <span class="n">train_features_norm</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">train_errors</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+                             <span class="n">features_mean</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">features_std</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+                             <span class="n">bands</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">ref_band</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">K</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">50</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Apply distance-based KNN weighting to combine expert PDFs.&quot;&quot;&quot;</span>
+    <span class="n">val_features</span> <span class="o">=</span> <span class="n">extract_features</span><span class="p">(</span><span class="n">val_dict</span><span class="p">,</span> <span class="n">bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="p">)</span>
+    <span class="n">val_features_norm</span> <span class="o">=</span> <span class="p">(</span><span class="n">val_features</span> <span class="o">-</span> <span class="n">features_mean</span><span class="p">)</span> <span class="o">/</span> <span class="n">features_std</span>
+
+    <span class="n">K</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">K</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">train_features_norm</span><span class="p">))</span>
+
+    <span class="n">nn</span> <span class="o">=</span> <span class="n">NearestNeighbors</span><span class="p">(</span><span class="n">n_neighbors</span><span class="o">=</span><span class="n">K</span><span class="p">,</span> <span class="n">algorithm</span><span class="o">=</span><span class="s1">&#39;auto&#39;</span><span class="p">,</span> <span class="n">n_jobs</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">train_features_norm</span><span class="p">)</span>
+    <span class="n">dists</span><span class="p">,</span> <span class="n">indices</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">kneighbors</span><span class="p">(</span><span class="n">val_features_norm</span><span class="p">)</span>
+
+    <span class="n">sigmas</span> <span class="o">=</span> <span class="n">dists</span><span class="p">[:,</span> <span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">sigmas</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">sigmas</span><span class="p">,</span> <span class="mf">1e-5</span><span class="p">)</span>
+
+    <span class="n">kernel_weights</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span> <span class="p">(</span><span class="n">dists</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mf">2.0</span> <span class="o">*</span> <span class="n">sigmas</span><span class="p">[:,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">]</span> <span class="o">**</span> <span class="mi">2</span><span class="p">))</span>
+    <span class="n">kernel_weights_sum</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">kernel_weights</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">kernel_weights</span> <span class="o">=</span> <span class="n">kernel_weights</span> <span class="o">/</span> <span class="n">kernel_weights_sum</span>
+
+    <span class="n">n_val</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">val_dict</span><span class="p">[</span><span class="s1">&#39;object_id&#39;</span><span class="p">])</span>
+    <span class="n">n_experts</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">val_pdfs</span><span class="p">)</span>
+
+    <span class="n">val_expert_weights</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_val</span><span class="p">,</span> <span class="n">n_experts</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_experts</span><span class="p">):</span>
+        <span class="n">neighbor_errors</span> <span class="o">=</span> <span class="n">train_errors</span><span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="n">indices</span><span class="p">]</span>
+        <span class="n">mean_err</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">kernel_weights</span> <span class="o">*</span> <span class="n">neighbor_errors</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">val_expert_weights</span><span class="p">[:,</span> <span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="p">(</span><span class="n">mean_err</span> <span class="o">+</span> <span class="mf">1e-5</span><span class="p">)</span>
+
+    <span class="n">val_expert_weights_sum</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">val_expert_weights</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">val_expert_weights</span> <span class="o">=</span> <span class="n">val_expert_weights</span> <span class="o">/</span> <span class="p">(</span><span class="n">val_expert_weights_sum</span> <span class="o">+</span> <span class="mf">1e-15</span><span class="p">)</span>
+
+    <span class="n">weighted_pdfs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">val_pdfs</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_val</span><span class="p">):</span>
+        <span class="n">w</span> <span class="o">=</span> <span class="n">val_expert_weights</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+        <span class="n">pdf_sum</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">weighted_pdfs</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span>
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_experts</span><span class="p">):</span>
+            <span class="n">pdf_sum</span> <span class="o">+=</span> <span class="n">w</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">*</span> <span class="n">val_pdfs</span><span class="p">[</span><span class="n">k</span><span class="p">][</span><span class="n">idx</span><span class="p">]</span>
+        <span class="n">weighted_pdfs</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">pdf_sum</span> <span class="o">/</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">pdf_sum</span><span class="p">)</span> <span class="o">+</span> <span class="mf">1e-15</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">weighted_pdfs</span><span class="p">,</span> <span class="n">val_expert_weights</span></div>
+
+
+
+<div class="viewcode-block" id="clean_pdf">
+<a class="viewcode-back" href="../../autoapi/pontifex/estimators/index.html#pontifex.estimators.clean_pdf">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">clean_pdf</span><span class="p">(</span><span class="n">pdf</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Replace NaNs and Infs, and ensure proper normalization.&quot;&quot;&quot;</span>
+    <span class="n">pdf</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan_to_num</span><span class="p">(</span><span class="n">pdf</span><span class="p">,</span> <span class="n">nan</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">posinf</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">neginf</span><span class="o">=</span><span class="mf">0.0</span><span class="p">)</span>
+    <span class="n">pdf</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">pdf</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
+    <span class="n">row_sums</span> <span class="o">=</span> <span class="n">pdf</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">pdf</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">row_sums</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span> <span class="n">pdf</span> <span class="o">/</span> <span class="n">row_sums</span><span class="p">,</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="n">pdf</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">pdf</span></div>
+
+
+
+<div class="viewcode-block" id="CommitteeOfExperts">
+<a class="viewcode-back" href="../../autoapi/pontifex/estimators/index.html#pontifex.estimators.CommitteeOfExperts">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">CommitteeOfExperts</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Committee of Experts model for combining multiple RAIL estimators via KNN weighting.&quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">is_ci</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">):</span>
+<div class="viewcode-block" id="CommitteeOfExperts.is_ci">
+<a class="viewcode-back" href="../../autoapi/pontifex/estimators/index.html#pontifex.estimators.CommitteeOfExperts.is_ci">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">is_ci</span> <span class="o">=</span> <span class="n">is_ci</span></div>
+
+<div class="viewcode-block" id="CommitteeOfExperts.model_dict">
+<a class="viewcode-back" href="../../autoapi/pontifex/estimators/index.html#pontifex.estimators.CommitteeOfExperts.model_dict">[docs]</a>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model_dict</span> <span class="o">=</span> <span class="p">{}</span></div>
+
+
+<div class="viewcode-block" id="CommitteeOfExperts.fit">
+<a class="viewcode-back" href="../../autoapi/pontifex/estimators/index.html#pontifex.estimators.CommitteeOfExperts.fit">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">train_dict</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="n">bands</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">ref_band</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">is_roman</span><span class="p">:</span> <span class="nb">bool</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+        <span class="n">n_train</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">train_dict</span><span class="p">[</span><span class="s1">&#39;redshift&#39;</span><span class="p">])</span>
+        <span class="n">is_ci</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_ci</span> <span class="ow">or</span> <span class="p">(</span><span class="n">n_train</span> <span class="o">&lt;</span> <span class="mi">1500</span><span class="p">)</span>
+
+        <span class="n">max_iter_nn</span> <span class="o">=</span> <span class="mi">10</span> <span class="k">if</span> <span class="n">is_ci</span> <span class="k">else</span> <span class="mi">200</span>
+        <span class="n">max_iter_som</span> <span class="o">=</span> <span class="mi">100</span> <span class="k">if</span> <span class="n">is_ci</span> <span class="k">else</span> <span class="mi">5000</span>
+        <span class="n">max_depth_fz</span> <span class="o">=</span> <span class="mi">3</span> <span class="k">if</span> <span class="n">is_ci</span> <span class="k">else</span> <span class="mi">8</span>
+        <span class="n">K_val</span> <span class="o">=</span> <span class="mi">15</span> <span class="k">if</span> <span class="n">is_roman</span> <span class="k">else</span> <span class="p">(</span><span class="mi">250</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">is_ci</span> <span class="k">else</span> <span class="mi">15</span><span class="p">)</span>
+
+        <span class="n">train_handle</span> <span class="o">=</span> <span class="n">TableHandle</span><span class="p">(</span><span class="s1">&#39;train_data&#39;</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">train_dict</span><span class="p">)</span>
+        <span class="n">err_bands</span> <span class="o">=</span> <span class="p">[</span><span class="n">b</span> <span class="o">+</span> <span class="s2">&quot;_err&quot;</span> <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">bands</span><span class="p">]</span>
+
+        <span class="c1"># 1. Train NN1</span>
+        <span class="n">informer_nn1</span> <span class="o">=</span> <span class="n">make_clean_stage</span><span class="p">(</span>
+            <span class="n">sklearn_neurnet</span><span class="o">.</span><span class="n">SklNeurNetInformer</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="s1">&#39;inform_nn1&#39;</span><span class="p">,</span> <span class="n">bands</span><span class="o">=</span><span class="n">bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="o">=</span><span class="n">ref_band</span><span class="p">,</span>
+            <span class="n">redshift_col</span><span class="o">=</span><span class="s1">&#39;redshift&#39;</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mf">0.03</span><span class="p">,</span> <span class="n">max_iter</span><span class="o">=</span><span class="n">max_iter_nn</span><span class="p">,</span> <span class="n">hdf5_groupname</span><span class="o">=</span><span class="s1">&#39;&#39;</span>
+        <span class="p">)</span>
+        <span class="n">model_nn1</span> <span class="o">=</span> <span class="n">informer_nn1</span><span class="o">.</span><span class="n">inform</span><span class="p">(</span><span class="n">train_handle</span><span class="p">)</span>
+        <span class="n">est_nn1</span> <span class="o">=</span> <span class="n">make_clean_stage</span><span class="p">(</span>
+            <span class="n">sklearn_neurnet</span><span class="o">.</span><span class="n">SklNeurNetEstimator</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="s1">&#39;estimate_nn1&#39;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">model_nn1</span><span class="p">,</span> <span class="n">bands</span><span class="o">=</span><span class="n">bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="o">=</span><span class="n">ref_band</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mf">0.03</span><span class="p">,</span> <span class="n">hdf5_groupname</span><span class="o">=</span><span class="s1">&#39;&#39;</span>
+        <span class="p">)</span>
+        <span class="n">pdf_nn1_train</span> <span class="o">=</span> <span class="n">est_nn1</span><span class="o">.</span><span class="n">estimate</span><span class="p">(</span><span class="n">train_handle</span><span class="p">)</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">pdf</span><span class="p">(</span><span class="n">Z_CENTERS</span><span class="p">)</span>
+
+        <span class="c1"># 2. Train NN2</span>
+        <span class="n">informer_nn2</span> <span class="o">=</span> <span class="n">make_clean_stage</span><span class="p">(</span>
+            <span class="n">sklearn_neurnet</span><span class="o">.</span><span class="n">SklNeurNetInformer</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="s1">&#39;inform_nn2&#39;</span><span class="p">,</span> <span class="n">bands</span><span class="o">=</span><span class="n">bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="o">=</span><span class="n">ref_band</span><span class="p">,</span>
+            <span class="n">redshift_col</span><span class="o">=</span><span class="s1">&#39;redshift&#39;</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mf">0.06</span><span class="p">,</span> <span class="n">max_iter</span><span class="o">=</span><span class="n">max_iter_nn</span><span class="p">,</span> <span class="n">hdf5_groupname</span><span class="o">=</span><span class="s1">&#39;&#39;</span>
+        <span class="p">)</span>
+        <span class="n">model_nn2</span> <span class="o">=</span> <span class="n">informer_nn2</span><span class="o">.</span><span class="n">inform</span><span class="p">(</span><span class="n">train_handle</span><span class="p">)</span>
+        <span class="n">est_nn2</span> <span class="o">=</span> <span class="n">make_clean_stage</span><span class="p">(</span>
+            <span class="n">sklearn_neurnet</span><span class="o">.</span><span class="n">SklNeurNetEstimator</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="s1">&#39;estimate_nn2&#39;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">model_nn2</span><span class="p">,</span> <span class="n">bands</span><span class="o">=</span><span class="n">bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="o">=</span><span class="n">ref_band</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mf">0.06</span><span class="p">,</span> <span class="n">hdf5_groupname</span><span class="o">=</span><span class="s1">&#39;&#39;</span>
+        <span class="p">)</span>
+        <span class="n">pdf_nn2_train</span> <span class="o">=</span> <span class="n">est_nn2</span><span class="o">.</span><span class="n">estimate</span><span class="p">(</span><span class="n">train_handle</span><span class="p">)</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">pdf</span><span class="p">(</span><span class="n">Z_CENTERS</span><span class="p">)</span>
+
+        <span class="c1"># 3. Train KNN</span>
+        <span class="n">full_mag_limits</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s1">&#39;mag_u_lsst&#39;</span><span class="p">:</span> <span class="mf">26.4</span><span class="p">,</span> <span class="s1">&#39;mag_g_lsst&#39;</span><span class="p">:</span> <span class="mf">27.8</span><span class="p">,</span> <span class="s1">&#39;mag_r_lsst&#39;</span><span class="p">:</span> <span class="mf">27.1</span><span class="p">,</span>
+            <span class="s1">&#39;mag_i_lsst&#39;</span><span class="p">:</span> <span class="mf">26.7</span><span class="p">,</span> <span class="s1">&#39;mag_z_lsst&#39;</span><span class="p">:</span> <span class="mf">25.8</span><span class="p">,</span> <span class="s1">&#39;mag_y_lsst&#39;</span><span class="p">:</span> <span class="mf">24.6</span><span class="p">,</span>
+            <span class="s1">&#39;mag_Y_roman&#39;</span><span class="p">:</span> <span class="mf">26.5</span><span class="p">,</span> <span class="s1">&#39;mag_J_roman&#39;</span><span class="p">:</span> <span class="mf">26.5</span><span class="p">,</span> <span class="s1">&#39;mag_H_roman&#39;</span><span class="p">:</span> <span class="mf">26.5</span>
+        <span class="p">}</span>
+        <span class="n">mag_limits</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">full_mag_limits</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">bands</span><span class="p">}</span>
+
+        <span class="n">informer_knn</span> <span class="o">=</span> <span class="n">make_clean_stage</span><span class="p">(</span>
+            <span class="n">k_nearneigh</span><span class="o">.</span><span class="n">KNearNeighInformer</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="s1">&#39;inform_knn&#39;</span><span class="p">,</span> <span class="n">bands</span><span class="o">=</span><span class="n">bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="o">=</span><span class="n">ref_band</span><span class="p">,</span>
+            <span class="n">redshift_col</span><span class="o">=</span><span class="s1">&#39;redshift&#39;</span><span class="p">,</span> <span class="n">hdf5_groupname</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">,</span>
+            <span class="n">zmin</span><span class="o">=</span><span class="mf">0.03</span><span class="p">,</span> <span class="n">zmax</span><span class="o">=</span><span class="n">ZMAX</span><span class="p">,</span> <span class="n">nzbins</span><span class="o">=</span><span class="n">NZ</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">nondetect_val</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">,</span>
+            <span class="n">nneigh_min</span><span class="o">=</span><span class="mi">5</span> <span class="k">if</span> <span class="n">is_ci</span> <span class="k">else</span> <span class="mi">3</span><span class="p">,</span> <span class="n">nneigh_max</span><span class="o">=</span><span class="mi">5</span> <span class="k">if</span> <span class="n">is_ci</span> <span class="k">else</span> <span class="mi">5</span><span class="p">,</span>
+            <span class="n">ngrid_sigma</span><span class="o">=</span><span class="mi">1</span> <span class="k">if</span> <span class="n">is_ci</span> <span class="k">else</span> <span class="mi">10</span><span class="p">,</span> <span class="n">mag_limits</span><span class="o">=</span><span class="n">mag_limits</span>
+        <span class="p">)</span>
+        <span class="n">model_knn</span> <span class="o">=</span> <span class="n">informer_knn</span><span class="o">.</span><span class="n">inform</span><span class="p">(</span><span class="n">train_handle</span><span class="p">)</span>
+        <span class="n">est_knn</span> <span class="o">=</span> <span class="n">make_clean_stage</span><span class="p">(</span>
+            <span class="n">k_nearneigh</span><span class="o">.</span><span class="n">KNearNeighEstimator</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="s1">&#39;estimate_knn&#39;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">model_knn</span><span class="p">,</span> <span class="n">bands</span><span class="o">=</span><span class="n">bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="o">=</span><span class="n">ref_band</span><span class="p">,</span>
+            <span class="n">hdf5_groupname</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="n">zmin</span><span class="o">=</span><span class="mf">0.03</span><span class="p">,</span> <span class="n">zmax</span><span class="o">=</span><span class="n">ZMAX</span><span class="p">,</span> <span class="n">nzbins</span><span class="o">=</span><span class="n">NZ</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">nondetect_val</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">,</span>
+            <span class="n">mag_limits</span><span class="o">=</span><span class="n">mag_limits</span>
+        <span class="p">)</span>
+        <span class="n">pdf_knn_train</span> <span class="o">=</span> <span class="n">est_knn</span><span class="o">.</span><span class="n">estimate</span><span class="p">(</span><span class="n">train_handle</span><span class="p">)</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">pdf</span><span class="p">(</span><span class="n">Z_CENTERS</span><span class="p">)</span>
+
+        <span class="c1"># 4. Train SOM</span>
+        <span class="n">pdf_som_train</span> <span class="o">=</span> <span class="n">get_som_pdfs</span><span class="p">(</span><span class="n">train_dict</span><span class="p">,</span> <span class="n">train_dict</span><span class="p">,</span> <span class="n">bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="p">,</span> <span class="n">Z_GRID</span><span class="p">,</span> <span class="n">max_iter</span><span class="o">=</span><span class="n">max_iter_som</span><span class="p">)</span>
+
+        <span class="c1"># 5. Train BPZ</span>
+        <span class="k">if</span> <span class="s1">&#39;mag_Y_roman&#39;</span> <span class="ow">in</span> <span class="n">train_dict</span> <span class="ow">and</span> <span class="p">(</span><span class="s1">&#39;mag_i_lsst&#39;</span> <span class="ow">in</span> <span class="n">train_dict</span> <span class="ow">or</span> <span class="s1">&#39;mag_u_lsst&#39;</span> <span class="ow">in</span> <span class="n">train_dict</span><span class="p">):</span>
+            <span class="n">bpz_filts</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;DC2LSST_u&#39;</span><span class="p">,</span> <span class="s1">&#39;DC2LSST_g&#39;</span><span class="p">,</span> <span class="s1">&#39;DC2LSST_r&#39;</span><span class="p">,</span> <span class="s1">&#39;DC2LSST_i&#39;</span><span class="p">,</span> <span class="s1">&#39;DC2LSST_z&#39;</span><span class="p">,</span> <span class="s1">&#39;DC2LSST_y&#39;</span><span class="p">,</span> <span class="s1">&#39;roman_Y106&#39;</span><span class="p">,</span> <span class="s1">&#39;roman_J129&#39;</span><span class="p">,</span> <span class="s1">&#39;roman_H158&#39;</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="s1">&#39;mag_Y_roman&#39;</span> <span class="ow">in</span> <span class="n">train_dict</span><span class="p">:</span>
+            <span class="n">bpz_filts</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;roman_Y106&#39;</span><span class="p">,</span> <span class="s1">&#39;roman_J129&#39;</span><span class="p">,</span> <span class="s1">&#39;roman_H158&#39;</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">bpz_filts</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;DC2LSST_u&#39;</span><span class="p">,</span> <span class="s1">&#39;DC2LSST_g&#39;</span><span class="p">,</span> <span class="s1">&#39;DC2LSST_r&#39;</span><span class="p">,</span> <span class="s1">&#39;DC2LSST_i&#39;</span><span class="p">,</span> <span class="s1">&#39;DC2LSST_z&#39;</span><span class="p">,</span> <span class="s1">&#39;DC2LSST_y&#39;</span><span class="p">]</span>
+        <span class="n">bpz_zp</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.01</span><span class="p">]</span><span class="o">*</span><span class="nb">len</span><span class="p">(</span><span class="n">bpz_filts</span><span class="p">)</span>
+
+        <span class="n">bpz_inf</span> <span class="o">=</span> <span class="n">make_clean_stage</span><span class="p">(</span>
+            <span class="n">BPZliteInformer</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;inform_bpz&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;bpz_model.pkl&quot;</span><span class="p">,</span> <span class="n">hdf5_groupname</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="n">bands</span><span class="o">=</span><span class="n">bands</span><span class="p">,</span> <span class="n">err_bands</span><span class="o">=</span><span class="n">err_bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="o">=</span><span class="n">ref_band</span><span class="p">,</span> <span class="n">redshift_col</span><span class="o">=</span><span class="s2">&quot;redshift&quot;</span><span class="p">,</span>
+            <span class="n">output_hdfn</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">mag_limits</span><span class="o">=</span><span class="n">mag_limits</span>
+        <span class="p">)</span>
+        <span class="n">bpz_model</span> <span class="o">=</span> <span class="n">bpz_inf</span><span class="o">.</span><span class="n">inform</span><span class="p">(</span><span class="n">train_handle</span><span class="p">)</span>
+        <span class="n">bpz_est</span> <span class="o">=</span> <span class="n">make_clean_stage</span><span class="p">(</span>
+            <span class="n">BPZliteEstimator</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;estimate_bpz&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">bpz_model</span><span class="p">,</span> <span class="n">hdf5_groupname</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="n">bands</span><span class="o">=</span><span class="n">bands</span><span class="p">,</span> <span class="n">err_bands</span><span class="o">=</span><span class="n">err_bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="o">=</span><span class="n">ref_band</span><span class="p">,</span> <span class="n">redshift_col</span><span class="o">=</span><span class="s2">&quot;redshift&quot;</span><span class="p">,</span>
+            <span class="n">filter_list</span><span class="o">=</span><span class="n">bpz_filts</span><span class="p">,</span> <span class="n">zp_errors</span><span class="o">=</span><span class="n">bpz_zp</span><span class="p">,</span> <span class="n">mag_limits</span><span class="o">=</span><span class="n">mag_limits</span>
+        <span class="p">)</span>
+        <span class="n">pdf_bpz_train</span> <span class="o">=</span> <span class="n">bpz_est</span><span class="o">.</span><span class="n">estimate</span><span class="p">(</span><span class="n">train_handle</span><span class="p">)</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">pdf</span><span class="p">(</span><span class="n">Z_CENTERS</span><span class="p">)</span>
+
+        <span class="c1"># 6. Train FlexZBoost</span>
+        <span class="n">fz_dict</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">zmin</span><span class="o">=</span><span class="mf">0.03</span><span class="p">,</span> <span class="n">zmax</span><span class="o">=</span><span class="n">ZMAX</span><span class="p">,</span> <span class="n">nzbins</span><span class="o">=</span><span class="n">NZ</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span>
+                       <span class="n">trainfrac</span><span class="o">=</span><span class="mf">0.75</span><span class="p">,</span> <span class="n">bumpmin</span><span class="o">=</span><span class="mf">0.02</span><span class="p">,</span> <span class="n">bumpmax</span><span class="o">=</span><span class="mf">0.35</span><span class="p">,</span>
+                       <span class="n">nbump</span><span class="o">=</span><span class="mi">5</span> <span class="k">if</span> <span class="n">is_ci</span> <span class="k">else</span> <span class="mi">20</span><span class="p">,</span> <span class="n">sharpmin</span><span class="o">=</span><span class="mf">0.7</span><span class="p">,</span> <span class="n">sharpmax</span><span class="o">=</span><span class="mf">2.1</span><span class="p">,</span> <span class="n">nsharp</span><span class="o">=</span><span class="mi">10</span> <span class="k">if</span> <span class="n">is_ci</span> <span class="k">else</span> <span class="mi">15</span><span class="p">,</span>
+                       <span class="n">max_basis</span><span class="o">=</span><span class="mi">35</span><span class="p">,</span> <span class="n">basis_system</span><span class="o">=</span><span class="s1">&#39;cosine&#39;</span><span class="p">,</span>
+                       <span class="n">hdf5_groupname</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">,</span>
+                       <span class="n">regression_params</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;max_depth&#39;</span><span class="p">:</span> <span class="n">max_depth_fz</span><span class="p">,</span> <span class="s1">&#39;objective&#39;</span><span class="p">:</span> <span class="s1">&#39;reg:squarederror&#39;</span><span class="p">})</span>
+        <span class="n">informer_fzboost</span> <span class="o">=</span> <span class="n">make_clean_stage</span><span class="p">(</span>
+            <span class="n">FlexZBoostInformer</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="s1">&#39;inform_fzboost&#39;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s1">&#39;fzboost_model.pkl&#39;</span><span class="p">,</span> <span class="n">bands</span><span class="o">=</span><span class="n">bands</span><span class="p">,</span> <span class="n">err_bands</span><span class="o">=</span><span class="n">err_bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="o">=</span><span class="n">ref_band</span><span class="p">,</span>
+            <span class="n">redshift_col</span><span class="o">=</span><span class="s1">&#39;redshift&#39;</span><span class="p">,</span> <span class="n">mag_limits</span><span class="o">=</span><span class="n">mag_limits</span><span class="p">,</span> <span class="o">**</span><span class="n">fz_dict</span>
+        <span class="p">)</span>
+        <span class="n">model_fzboost</span> <span class="o">=</span> <span class="n">informer_fzboost</span><span class="o">.</span><span class="n">inform</span><span class="p">(</span><span class="n">train_handle</span><span class="p">)</span>
+        <span class="n">estimator_fzboost</span> <span class="o">=</span> <span class="n">make_clean_stage</span><span class="p">(</span>
+            <span class="n">FlexZBoostEstimator</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="s1">&#39;estimate_fzboost&#39;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">model_fzboost</span><span class="p">,</span> <span class="n">bands</span><span class="o">=</span><span class="n">bands</span><span class="p">,</span> <span class="n">err_bands</span><span class="o">=</span><span class="n">err_bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="o">=</span><span class="n">ref_band</span><span class="p">,</span>
+            <span class="n">hdf5_groupname</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="n">zmin</span><span class="o">=</span><span class="mf">0.03</span><span class="p">,</span> <span class="n">zmax</span><span class="o">=</span><span class="n">ZMAX</span><span class="p">,</span> <span class="n">nzbins</span><span class="o">=</span><span class="n">NZ</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">mag_limits</span><span class="o">=</span><span class="n">mag_limits</span>
+        <span class="p">)</span>
+        <span class="n">pdf_fzboost_train</span> <span class="o">=</span> <span class="n">estimator_fzboost</span><span class="o">.</span><span class="n">estimate</span><span class="p">(</span><span class="n">train_handle</span><span class="p">)</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">pdf</span><span class="p">(</span><span class="n">Z_CENTERS</span><span class="p">)</span>
+
+        <span class="c1"># 7. Train AION</span>
+        <span class="n">aion_device</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;AION_PZ_DEVICE&quot;</span><span class="p">)</span>
+        <span class="n">aion_model</span><span class="p">,</span> <span class="n">codec_manager</span><span class="p">,</span> <span class="n">device</span> <span class="o">=</span> <span class="n">aion_pz</span><span class="o">.</span><span class="n">load_aion</span><span class="p">(</span><span class="n">device</span><span class="o">=</span><span class="n">aion_device</span><span class="p">)</span>
+        <span class="n">x_train_aion</span> <span class="o">=</span> <span class="n">aion_pz</span><span class="o">.</span><span class="n">build_design_matrix</span><span class="p">(</span><span class="n">aion_model</span><span class="p">,</span> <span class="n">codec_manager</span><span class="p">,</span> <span class="n">train_dict</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+        
+        <span class="n">scaler</span> <span class="o">=</span> <span class="n">StandardScaler</span><span class="p">()</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x_train_aion</span><span class="p">)</span>
+        <span class="n">xs_fit</span> <span class="o">=</span> <span class="n">scaler</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">x_train_aion</span><span class="p">)</span>
+        <span class="n">labels_fit</span> <span class="o">=</span> <span class="n">aion_pz</span><span class="o">.</span><span class="n">_z_to_bin</span><span class="p">(</span><span class="n">train_dict</span><span class="p">[</span><span class="s1">&#39;redshift&#39;</span><span class="p">])</span>
+        
+        <span class="n">clf</span> <span class="o">=</span> <span class="n">MLPClassifier</span><span class="p">(</span>
+            <span class="n">hidden_layer_sizes</span><span class="o">=</span><span class="p">(</span><span class="mi">128</span><span class="p">,</span> <span class="mi">64</span><span class="p">)</span> <span class="k">if</span> <span class="n">is_ci</span> <span class="k">else</span> <span class="p">(</span><span class="mi">512</span><span class="p">,</span> <span class="mi">256</span><span class="p">),</span>
+            <span class="n">alpha</span><span class="o">=</span><span class="mf">1e-4</span><span class="p">,</span>
+            <span class="n">batch_size</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span>
+            <span class="n">learning_rate_init</span><span class="o">=</span><span class="mf">1e-3</span><span class="p">,</span>
+            <span class="n">max_iter</span><span class="o">=</span><span class="n">max_iter_nn</span><span class="p">,</span>
+            <span class="n">early_stopping</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">n_iter_no_change</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">clf</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">xs_fit</span><span class="p">,</span> <span class="n">labels_fit</span><span class="p">)</span>
+        
+        <span class="n">aion_head</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;scaler&quot;</span><span class="p">:</span> <span class="n">scaler</span><span class="p">,</span> <span class="s2">&quot;clf&quot;</span><span class="p">:</span> <span class="n">clf</span><span class="p">,</span> <span class="s2">&quot;z_grid&quot;</span><span class="p">:</span> <span class="n">Z_GRID</span><span class="p">,</span> <span class="s2">&quot;classes_&quot;</span><span class="p">:</span> <span class="n">clf</span><span class="o">.</span><span class="n">classes_</span><span class="p">}</span>
+        <span class="n">pdf_aion_train</span> <span class="o">=</span> <span class="n">aion_pz</span><span class="o">.</span><span class="n">predict_pz</span><span class="p">(</span><span class="n">aion_head</span><span class="p">,</span> <span class="n">x_train_aion</span><span class="p">)</span>
+        <span class="n">pdf_aion_train</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">pdf_aion_train</span><span class="p">[:,</span> <span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">pdf_aion_train</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">:])</span>
+
+        <span class="c1"># 7.5 Train LePhare conditionally (only if not is_roman)</span>
+        <span class="n">pdf_lephare_train</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">lephare_model</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">is_roman</span><span class="p">:</span>
+            <span class="n">lp_bands</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;mag_u_lsst&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_g_lsst&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_r_lsst&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_i_lsst&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_z_lsst&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_y_lsst&#39;</span><span class="p">]</span>
+            <span class="n">lp_err_bands</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;mag_u_lsst_err&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_g_lsst_err&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_r_lsst_err&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_i_lsst_err&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_z_lsst_err&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_y_lsst_err&#39;</span><span class="p">]</span>
+            <span class="n">lp_ref_band</span> <span class="o">=</span> <span class="s1">&#39;mag_i_lsst&#39;</span>
+            
+            <span class="n">curr_bands</span> <span class="o">=</span> <span class="n">bands</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">bands</span><span class="p">)</span> <span class="o">==</span> <span class="mi">6</span> <span class="k">else</span> <span class="n">lp_bands</span>
+            <span class="n">curr_err_bands</span> <span class="o">=</span> <span class="n">err_bands</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">bands</span><span class="p">)</span> <span class="o">==</span> <span class="mi">6</span> <span class="k">else</span> <span class="n">lp_err_bands</span>
+            <span class="n">curr_ref_band</span> <span class="o">=</span> <span class="n">ref_band</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">bands</span><span class="p">)</span> <span class="o">==</span> <span class="mi">6</span> <span class="k">else</span> <span class="n">lp_ref_band</span>
+            
+            <span class="n">lephare_config_file</span> <span class="o">=</span> <span class="s2">&quot;/home/mardom/Rubin-LSST-Research/Photometric-Redshift/code/rail_lephare/tests/data/lsst.para&quot;</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">lephare_config_file</span><span class="p">):</span>
+                <span class="n">possible_paths</span> <span class="o">=</span> <span class="p">[</span>
+                    <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="vm">__file__</span><span class="p">),</span> <span class="s2">&quot;tests&quot;</span><span class="p">,</span> <span class="s2">&quot;lsst.para&quot;</span><span class="p">),</span>
+                    <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="vm">__file__</span><span class="p">),</span> <span class="s2">&quot;lsst.para&quot;</span><span class="p">),</span>
+                    <span class="s2">&quot;tests/lsst.para&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;lsst.para&quot;</span><span class="p">,</span>
+                <span class="p">]</span>
+                <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">possible_paths</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">p</span><span class="p">):</span>
+                        <span class="n">lephare_config_file</span> <span class="o">=</span> <span class="n">p</span>
+                        <span class="k">break</span>
+            <span class="n">lephare_config</span> <span class="o">=</span> <span class="n">lp</span><span class="o">.</span><span class="n">keymap_to_string_dict</span><span class="p">(</span><span class="n">lp</span><span class="o">.</span><span class="n">read_config</span><span class="p">(</span><span class="n">lephare_config_file</span><span class="p">))</span>
+            
+            <span class="n">lp_inf</span> <span class="o">=</span> <span class="n">make_clean_stage</span><span class="p">(</span>
+                <span class="n">LephareInformer</span><span class="p">,</span>
+                <span class="n">name</span><span class="o">=</span><span class="s2">&quot;inform_lp&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;lp_model.pkl&quot;</span><span class="p">,</span> <span class="n">hdf5_groupname</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+                <span class="n">bands</span><span class="o">=</span><span class="n">curr_bands</span><span class="p">,</span> <span class="n">err_bands</span><span class="o">=</span><span class="n">curr_err_bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="o">=</span><span class="n">curr_ref_band</span><span class="p">,</span> <span class="n">redshift_col</span><span class="o">=</span><span class="s2">&quot;redshift&quot;</span><span class="p">,</span>
+                <span class="n">zmin</span><span class="o">=</span><span class="mf">0.03</span><span class="p">,</span> <span class="n">zmax</span><span class="o">=</span><span class="mf">1.5</span><span class="p">,</span> <span class="n">nzbins</span><span class="o">=</span><span class="mi">61</span><span class="p">,</span> <span class="o">**</span><span class="p">{</span><span class="sa">f</span><span class="s2">&quot;lephare.</span><span class="si">{</span><span class="n">k</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">lephare_config</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+            <span class="p">)</span>
+            <span class="n">lephare_model</span> <span class="o">=</span> <span class="n">lp_inf</span><span class="o">.</span><span class="n">inform</span><span class="p">(</span><span class="n">train_handle</span><span class="p">)</span>
+            <span class="n">lp_est_train</span> <span class="o">=</span> <span class="n">make_clean_stage</span><span class="p">(</span>
+                <span class="n">LephareEstimator</span><span class="p">,</span>
+                <span class="n">name</span><span class="o">=</span><span class="s2">&quot;estimate_lp_train&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">lephare_model</span><span class="p">,</span> <span class="n">hdf5_groupname</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+                <span class="n">bands</span><span class="o">=</span><span class="n">curr_bands</span><span class="p">,</span> <span class="n">err_bands</span><span class="o">=</span><span class="n">curr_err_bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="o">=</span><span class="n">curr_ref_band</span><span class="p">,</span> <span class="n">redshift_col</span><span class="o">=</span><span class="s2">&quot;redshift&quot;</span>
+            <span class="p">)</span>
+            <span class="n">pdf_lephare_train</span> <span class="o">=</span> <span class="n">lp_est_train</span><span class="o">.</span><span class="n">estimate</span><span class="p">(</span><span class="n">train_handle</span><span class="p">)</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">pdf</span><span class="p">(</span><span class="n">Z_CENTERS</span><span class="p">)</span>
+
+        <span class="c1"># 7.6 Train PZFlow</span>
+        <span class="n">pzflow_inf</span> <span class="o">=</span> <span class="n">make_clean_stage</span><span class="p">(</span>
+            <span class="n">PZFlowInformer</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;inform_pzflow&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;pzflow_model.pkl&quot;</span><span class="p">,</span> <span class="n">hdf5_groupname</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="n">zmin</span><span class="o">=</span><span class="mf">0.03</span><span class="p">,</span> <span class="n">zmax</span><span class="o">=</span><span class="n">ZMAX</span><span class="p">,</span> <span class="n">nzbins</span><span class="o">=</span><span class="n">NZ</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+            <span class="n">ref_band</span><span class="o">=</span><span class="n">ref_band</span><span class="p">,</span> <span class="n">column_names</span><span class="o">=</span><span class="n">bands</span><span class="p">,</span> <span class="n">mag_limits</span><span class="o">=</span><span class="n">mag_limits</span><span class="p">,</span>
+            <span class="n">include_mag_errors</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">redshift_col</span><span class="o">=</span><span class="s2">&quot;redshift&quot;</span><span class="p">,</span>
+            <span class="n">n_training_epochs</span><span class="o">=</span><span class="mi">5</span> <span class="k">if</span> <span class="n">is_ci</span> <span class="k">else</span> <span class="mi">50</span>
+        <span class="p">)</span>
+        <span class="n">pzflow_model</span> <span class="o">=</span> <span class="n">pzflow_inf</span><span class="o">.</span><span class="n">inform</span><span class="p">(</span><span class="n">train_handle</span><span class="p">)</span>
+        <span class="n">pzflow_est</span> <span class="o">=</span> <span class="n">make_clean_stage</span><span class="p">(</span>
+            <span class="n">PZFlowEstimator</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;estimate_pzflow&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">pzflow_model</span><span class="p">,</span> <span class="n">hdf5_groupname</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="n">zmin</span><span class="o">=</span><span class="mf">0.03</span><span class="p">,</span> <span class="n">zmax</span><span class="o">=</span><span class="n">ZMAX</span><span class="p">,</span> <span class="n">nzbins</span><span class="o">=</span><span class="n">NZ</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+            <span class="n">ref_band</span><span class="o">=</span><span class="n">ref_band</span><span class="p">,</span> <span class="n">column_names</span><span class="o">=</span><span class="n">bands</span><span class="p">,</span> <span class="n">mag_limits</span><span class="o">=</span><span class="n">mag_limits</span><span class="p">,</span>
+            <span class="n">include_mag_errors</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">redshift_col</span><span class="o">=</span><span class="s2">&quot;redshift&quot;</span>
+        <span class="p">)</span>
+        <span class="n">train_dict_for_flow</span> <span class="o">=</span> <span class="n">train_dict</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="k">if</span> <span class="s1">&#39;redshift&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">train_dict_for_flow</span><span class="p">:</span>
+            <span class="n">train_dict_for_flow</span><span class="p">[</span><span class="s1">&#39;redshift&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">train_dict_for_flow</span><span class="p">[</span><span class="nb">list</span><span class="p">(</span><span class="n">train_dict_for_flow</span><span class="o">.</span><span class="n">keys</span><span class="p">())[</span><span class="mi">0</span><span class="p">]]))</span>
+        <span class="n">train_handle_for_flow</span> <span class="o">=</span> <span class="n">TableHandle</span><span class="p">(</span><span class="s1">&#39;train_data_flow&#39;</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">train_dict_for_flow</span><span class="p">)</span>
+        <span class="n">pdf_pzflow_train</span> <span class="o">=</span> <span class="n">pzflow_est</span><span class="o">.</span><span class="n">estimate</span><span class="p">(</span><span class="n">train_handle_for_flow</span><span class="p">)</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">pdf</span><span class="p">(</span><span class="n">Z_CENTERS</span><span class="p">)</span>
+
+        <span class="c1"># 7.7 Train GPz</span>
+        <span class="n">gpz_inf</span> <span class="o">=</span> <span class="n">make_clean_stage</span><span class="p">(</span>
+            <span class="n">GPzInformer</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;inform_gpz&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpz_model.pkl&quot;</span><span class="p">,</span> <span class="n">hdf5_groupname</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="n">bands</span><span class="o">=</span><span class="n">bands</span><span class="p">,</span> <span class="n">err_bands</span><span class="o">=</span><span class="n">err_bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="o">=</span><span class="n">ref_band</span><span class="p">,</span> <span class="n">redshift_col</span><span class="o">=</span><span class="s2">&quot;redshift&quot;</span><span class="p">,</span>
+            <span class="n">replace_error_vals</span><span class="o">=</span><span class="p">[</span><span class="mf">0.1</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">bands</span><span class="p">),</span> <span class="n">max_iter</span><span class="o">=</span><span class="mi">20</span> <span class="k">if</span> <span class="n">is_ci</span> <span class="k">else</span> <span class="mi">150</span><span class="p">,</span> <span class="n">n_basis</span><span class="o">=</span><span class="mi">60</span><span class="p">,</span>
+            <span class="n">train_frac</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">csl_method</span><span class="o">=</span><span class="s2">&quot;normal&quot;</span><span class="p">,</span> <span class="n">mag_limits</span><span class="o">=</span><span class="n">mag_limits</span>
+        <span class="p">)</span>
+        <span class="n">gpz_model</span> <span class="o">=</span> <span class="n">gpz_inf</span><span class="o">.</span><span class="n">inform</span><span class="p">(</span><span class="n">train_handle</span><span class="p">)</span>
+        <span class="n">gpz_est</span> <span class="o">=</span> <span class="n">make_clean_stage</span><span class="p">(</span>
+            <span class="n">GPzEstimator</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;estimate_gpz&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">gpz_model</span><span class="p">,</span> <span class="n">hdf5_groupname</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="n">bands</span><span class="o">=</span><span class="n">bands</span><span class="p">,</span> <span class="n">err_bands</span><span class="o">=</span><span class="n">err_bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="o">=</span><span class="n">ref_band</span><span class="p">,</span> <span class="n">redshift_col</span><span class="o">=</span><span class="s2">&quot;redshift&quot;</span><span class="p">,</span>
+            <span class="n">replace_error_vals</span><span class="o">=</span><span class="p">[</span><span class="mf">0.1</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">bands</span><span class="p">),</span> <span class="n">zmin</span><span class="o">=</span><span class="mf">0.03</span><span class="p">,</span> <span class="n">zmax</span><span class="o">=</span><span class="n">ZMAX</span><span class="p">,</span> <span class="n">nzbins</span><span class="o">=</span><span class="n">NZ</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">mag_limits</span><span class="o">=</span><span class="n">mag_limits</span>
+        <span class="p">)</span>
+        <span class="n">pdf_gpz_train</span> <span class="o">=</span> <span class="n">gpz_est</span><span class="o">.</span><span class="n">estimate</span><span class="p">(</span><span class="n">train_handle</span><span class="p">)</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">pdf</span><span class="p">(</span><span class="n">Z_CENTERS</span><span class="p">)</span>
+
+        <span class="c1"># Clean all PDFs</span>
+        <span class="n">pdf_nn1_train</span> <span class="o">=</span> <span class="n">clean_pdf</span><span class="p">(</span><span class="n">pdf_nn1_train</span><span class="p">)</span>
+        <span class="n">pdf_nn2_train</span> <span class="o">=</span> <span class="n">clean_pdf</span><span class="p">(</span><span class="n">pdf_nn2_train</span><span class="p">)</span>
+        <span class="n">pdf_knn_train</span> <span class="o">=</span> <span class="n">clean_pdf</span><span class="p">(</span><span class="n">pdf_knn_train</span><span class="p">)</span>
+        <span class="n">pdf_som_train</span> <span class="o">=</span> <span class="n">clean_pdf</span><span class="p">(</span><span class="n">pdf_som_train</span><span class="p">)</span>
+        <span class="n">pdf_bpz_train</span> <span class="o">=</span> <span class="n">clean_pdf</span><span class="p">(</span><span class="n">pdf_bpz_train</span><span class="p">)</span>
+        <span class="n">pdf_fzboost_train</span> <span class="o">=</span> <span class="n">clean_pdf</span><span class="p">(</span><span class="n">pdf_fzboost_train</span><span class="p">)</span>
+        <span class="n">pdf_aion_train</span> <span class="o">=</span> <span class="n">clean_pdf</span><span class="p">(</span><span class="n">pdf_aion_train</span><span class="p">)</span>
+        <span class="n">pdf_pzflow_train</span> <span class="o">=</span> <span class="n">clean_pdf</span><span class="p">(</span><span class="n">pdf_pzflow_train</span><span class="p">)</span>
+        <span class="n">pdf_gpz_train</span> <span class="o">=</span> <span class="n">clean_pdf</span><span class="p">(</span><span class="n">pdf_gpz_train</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">pdf_lephare_train</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">pdf_lephare_train</span> <span class="o">=</span> <span class="n">clean_pdf</span><span class="p">(</span><span class="n">pdf_lephare_train</span><span class="p">)</span>
+
+        <span class="c1"># Gating</span>
+        <span class="n">train_pdfs</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">pdf_nn1_train</span><span class="p">,</span> <span class="n">pdf_nn2_train</span><span class="p">,</span> <span class="n">pdf_knn_train</span><span class="p">,</span> <span class="n">pdf_som_train</span><span class="p">,</span>
+            <span class="n">pdf_bpz_train</span><span class="p">,</span> <span class="n">pdf_fzboost_train</span><span class="p">,</span> <span class="n">pdf_aion_train</span><span class="p">,</span>
+            <span class="n">pdf_pzflow_train</span><span class="p">,</span> <span class="n">pdf_gpz_train</span>
+        <span class="p">]</span>
+        <span class="k">if</span> <span class="n">pdf_lephare_train</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">train_pdfs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pdf_lephare_train</span><span class="p">)</span>
+
+        <span class="n">train_features_norm</span><span class="p">,</span> <span class="n">train_errors</span><span class="p">,</span> <span class="n">features_mean</span><span class="p">,</span> <span class="n">features_std</span> <span class="o">=</span> <span class="n">compute_expert_weights_knn</span><span class="p">(</span>
+            <span class="n">train_dict</span><span class="p">,</span> <span class="n">train_pdfs</span><span class="p">,</span> <span class="n">Z_CENTERS</span><span class="p">,</span> <span class="n">bands</span><span class="p">,</span> <span class="n">ref_band</span>
+        <span class="p">)</span>
+
+        <span class="n">weighted_train</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">apply_expert_weights_knn</span><span class="p">(</span>
+            <span class="n">train_dict</span><span class="p">,</span> <span class="n">train_pdfs</span><span class="p">,</span> <span class="n">train_features_norm</span><span class="p">,</span> <span class="n">train_errors</span><span class="p">,</span> <span class="n">features_mean</span><span class="p">,</span> <span class="n">features_std</span><span class="p">,</span> <span class="n">bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="p">,</span> <span class="n">K</span><span class="o">=</span><span class="n">K_val</span>
+        <span class="p">)</span>
+        <span class="n">best_t</span> <span class="o">=</span> <span class="n">aion_pz</span><span class="o">.</span><span class="n">fit_temperature</span><span class="p">(</span><span class="n">weighted_train</span><span class="p">,</span> <span class="n">Z_CENTERS</span><span class="p">,</span> <span class="n">train_dict</span><span class="p">[</span><span class="s1">&#39;redshift&#39;</span><span class="p">])</span>
+
+        <span class="n">model_pzflow_bytes</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="s2">&quot;pzflow_model.pkl&quot;</span><span class="p">):</span>
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">&quot;pzflow_model.pkl&quot;</span><span class="p">,</span> <span class="s2">&quot;rb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                <span class="n">model_pzflow_bytes</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">&quot;pzflow_model.pkl&quot;</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
+                <span class="k">pass</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">model_dict</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;model_nn1&quot;</span><span class="p">:</span> <span class="n">model_nn1</span><span class="p">,</span>
+            <span class="s2">&quot;model_nn2&quot;</span><span class="p">:</span> <span class="n">model_nn2</span><span class="p">,</span>
+            <span class="s2">&quot;model_knn&quot;</span><span class="p">:</span> <span class="n">model_knn</span><span class="p">,</span>
+            <span class="s2">&quot;model_bpz&quot;</span><span class="p">:</span> <span class="n">bpz_model</span><span class="p">,</span>
+            <span class="s2">&quot;model_fzboost&quot;</span><span class="p">:</span> <span class="n">model_fzboost</span><span class="p">,</span>
+            <span class="s2">&quot;model_pzflow&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="s2">&quot;model_pzflow_bytes&quot;</span><span class="p">:</span> <span class="n">model_pzflow_bytes</span><span class="p">,</span>
+            <span class="s2">&quot;model_gpz&quot;</span><span class="p">:</span> <span class="n">gpz_model</span><span class="p">,</span>
+            <span class="s2">&quot;model_lephare&quot;</span><span class="p">:</span> <span class="n">lephare_model</span><span class="p">,</span>
+            <span class="s2">&quot;aion_head&quot;</span><span class="p">:</span> <span class="n">aion_head</span><span class="p">,</span>
+            <span class="s2">&quot;train_dict_som&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;redshift&quot;</span><span class="p">:</span> <span class="n">train_dict</span><span class="p">[</span><span class="s2">&quot;redshift&quot;</span><span class="p">],</span>
+                <span class="s2">&quot;dec&quot;</span><span class="p">:</span> <span class="n">train_dict</span><span class="p">[</span><span class="s2">&quot;dec&quot;</span><span class="p">],</span>
+                <span class="s2">&quot;ra&quot;</span><span class="p">:</span> <span class="n">train_dict</span><span class="p">[</span><span class="s2">&quot;ra&quot;</span><span class="p">],</span>
+                <span class="o">**</span><span class="p">{</span><span class="n">b</span><span class="p">:</span> <span class="n">train_dict</span><span class="p">[</span><span class="n">b</span><span class="p">]</span> <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">bands</span><span class="p">}</span>
+            <span class="p">},</span>
+            <span class="s2">&quot;train_features_norm&quot;</span><span class="p">:</span> <span class="n">train_features_norm</span><span class="p">,</span>
+            <span class="s2">&quot;train_errors&quot;</span><span class="p">:</span> <span class="n">train_errors</span><span class="p">,</span>
+            <span class="s2">&quot;features_mean&quot;</span><span class="p">:</span> <span class="n">features_mean</span><span class="p">,</span>
+            <span class="s2">&quot;features_std&quot;</span><span class="p">:</span> <span class="n">features_std</span><span class="p">,</span>
+            <span class="s2">&quot;best_t&quot;</span><span class="p">:</span> <span class="n">best_t</span><span class="p">,</span>
+            <span class="s2">&quot;bands&quot;</span><span class="p">:</span> <span class="n">bands</span><span class="p">,</span>
+            <span class="s2">&quot;ref_band&quot;</span><span class="p">:</span> <span class="n">ref_band</span><span class="p">,</span>
+            <span class="s2">&quot;is_roman&quot;</span><span class="p">:</span> <span class="n">is_roman</span><span class="p">,</span>
+            <span class="s2">&quot;K_val&quot;</span><span class="p">:</span> <span class="n">K_val</span><span class="p">,</span>
+            <span class="s2">&quot;bpz_filts&quot;</span><span class="p">:</span> <span class="n">bpz_filts</span><span class="p">,</span>
+            <span class="s2">&quot;bpz_zp&quot;</span><span class="p">:</span> <span class="n">bpz_zp</span><span class="p">,</span>
+            <span class="s2">&quot;err_bands&quot;</span><span class="p">:</span> <span class="n">err_bands</span><span class="p">,</span>
+            <span class="s2">&quot;max_iter_som&quot;</span><span class="p">:</span> <span class="n">max_iter_som</span>
+        <span class="p">}</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_dict</span></div>
+
+
+<div class="viewcode-block" id="CommitteeOfExperts.predict">
+<a class="viewcode-back" href="../../autoapi/pontifex/estimators/index.html#pontifex.estimators.CommitteeOfExperts.predict">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">predict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">test_dict</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+        <span class="n">model_dict</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_dict</span>
+        <span class="n">bands</span> <span class="o">=</span> <span class="n">model_dict</span><span class="p">[</span><span class="s2">&quot;bands&quot;</span><span class="p">]</span>
+        <span class="n">ref_band</span> <span class="o">=</span> <span class="n">model_dict</span><span class="p">[</span><span class="s2">&quot;ref_band&quot;</span><span class="p">]</span>
+        <span class="n">is_roman</span> <span class="o">=</span> <span class="n">model_dict</span><span class="p">[</span><span class="s2">&quot;is_roman&quot;</span><span class="p">]</span>
+        <span class="n">K_val</span> <span class="o">=</span> <span class="n">model_dict</span><span class="p">[</span><span class="s2">&quot;K_val&quot;</span><span class="p">]</span>
+        <span class="n">bpz_filts</span> <span class="o">=</span> <span class="n">model_dict</span><span class="p">[</span><span class="s2">&quot;bpz_filts&quot;</span><span class="p">]</span>
+        <span class="n">bpz_zp</span> <span class="o">=</span> <span class="n">model_dict</span><span class="p">[</span><span class="s2">&quot;bpz_zp&quot;</span><span class="p">]</span>
+        <span class="n">err_bands</span> <span class="o">=</span> <span class="n">model_dict</span><span class="p">[</span><span class="s2">&quot;err_bands&quot;</span><span class="p">]</span>
+        <span class="n">max_iter_som</span> <span class="o">=</span> <span class="n">model_dict</span><span class="p">[</span><span class="s2">&quot;max_iter_som&quot;</span><span class="p">]</span>
+
+        <span class="n">test_handle</span> <span class="o">=</span> <span class="n">TableHandle</span><span class="p">(</span><span class="s1">&#39;test_data&#39;</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">test_dict</span><span class="p">)</span>
+        <span class="n">full_mag_limits</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s1">&#39;mag_u_lsst&#39;</span><span class="p">:</span> <span class="mf">26.4</span><span class="p">,</span> <span class="s1">&#39;mag_g_lsst&#39;</span><span class="p">:</span> <span class="mf">27.8</span><span class="p">,</span> <span class="s1">&#39;mag_r_lsst&#39;</span><span class="p">:</span> <span class="mf">27.1</span><span class="p">,</span>
+            <span class="s1">&#39;mag_i_lsst&#39;</span><span class="p">:</span> <span class="mf">26.7</span><span class="p">,</span> <span class="s1">&#39;mag_z_lsst&#39;</span><span class="p">:</span> <span class="mf">25.8</span><span class="p">,</span> <span class="s1">&#39;mag_y_lsst&#39;</span><span class="p">:</span> <span class="mf">24.6</span><span class="p">,</span>
+            <span class="s1">&#39;mag_Y_roman&#39;</span><span class="p">:</span> <span class="mf">26.5</span><span class="p">,</span> <span class="s1">&#39;mag_J_roman&#39;</span><span class="p">:</span> <span class="mf">26.5</span><span class="p">,</span> <span class="s1">&#39;mag_H_roman&#39;</span><span class="p">:</span> <span class="mf">26.5</span>
+        <span class="p">}</span>
+        <span class="n">mag_limits</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">full_mag_limits</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">bands</span><span class="p">}</span>
+
+        <span class="c1"># 1. NN1</span>
+        <span class="n">est_nn1</span> <span class="o">=</span> <span class="n">make_clean_stage</span><span class="p">(</span>
+            <span class="n">sklearn_neurnet</span><span class="o">.</span><span class="n">SklNeurNetEstimator</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="s1">&#39;estimate_nn1_eo&#39;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">model_dict</span><span class="p">[</span><span class="s2">&quot;model_nn1&quot;</span><span class="p">],</span> <span class="n">bands</span><span class="o">=</span><span class="n">bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="o">=</span><span class="n">ref_band</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mf">0.03</span><span class="p">,</span> <span class="n">hdf5_groupname</span><span class="o">=</span><span class="s1">&#39;&#39;</span>
+        <span class="p">)</span>
+        <span class="n">pdf_nn1</span> <span class="o">=</span> <span class="n">est_nn1</span><span class="o">.</span><span class="n">estimate</span><span class="p">(</span><span class="n">test_handle</span><span class="p">)</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">pdf</span><span class="p">(</span><span class="n">Z_CENTERS</span><span class="p">)</span>
+
+        <span class="c1"># 2. NN2</span>
+        <span class="n">est_nn2</span> <span class="o">=</span> <span class="n">make_clean_stage</span><span class="p">(</span>
+            <span class="n">sklearn_neurnet</span><span class="o">.</span><span class="n">SklNeurNetEstimator</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="s1">&#39;estimate_nn2_eo&#39;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">model_dict</span><span class="p">[</span><span class="s2">&quot;model_nn2&quot;</span><span class="p">],</span> <span class="n">bands</span><span class="o">=</span><span class="n">bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="o">=</span><span class="n">ref_band</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mf">0.06</span><span class="p">,</span> <span class="n">hdf5_groupname</span><span class="o">=</span><span class="s1">&#39;&#39;</span>
+        <span class="p">)</span>
+        <span class="n">pdf_nn2</span> <span class="o">=</span> <span class="n">est_nn2</span><span class="o">.</span><span class="n">estimate</span><span class="p">(</span><span class="n">test_handle</span><span class="p">)</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">pdf</span><span class="p">(</span><span class="n">Z_CENTERS</span><span class="p">)</span>
+
+        <span class="c1"># 3. KNN</span>
+        <span class="n">est_knn</span> <span class="o">=</span> <span class="n">make_clean_stage</span><span class="p">(</span>
+            <span class="n">k_nearneigh</span><span class="o">.</span><span class="n">KNearNeighEstimator</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="s1">&#39;estimate_knn_eo&#39;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">model_dict</span><span class="p">[</span><span class="s2">&quot;model_knn&quot;</span><span class="p">],</span> <span class="n">bands</span><span class="o">=</span><span class="n">bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="o">=</span><span class="n">ref_band</span><span class="p">,</span>
+            <span class="n">hdf5_groupname</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="n">zmin</span><span class="o">=</span><span class="mf">0.03</span><span class="p">,</span> <span class="n">zmax</span><span class="o">=</span><span class="n">ZMAX</span><span class="p">,</span> <span class="n">nzbins</span><span class="o">=</span><span class="n">NZ</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">nondetect_val</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">,</span>
+            <span class="n">mag_limits</span><span class="o">=</span><span class="n">mag_limits</span>
+        <span class="p">)</span>
+        <span class="n">pdf_knn</span> <span class="o">=</span> <span class="n">est_knn</span><span class="o">.</span><span class="n">estimate</span><span class="p">(</span><span class="n">test_handle</span><span class="p">)</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">pdf</span><span class="p">(</span><span class="n">Z_CENTERS</span><span class="p">)</span>
+
+        <span class="c1"># 4. SOM</span>
+        <span class="n">pdf_som</span> <span class="o">=</span> <span class="n">get_som_pdfs</span><span class="p">(</span><span class="n">model_dict</span><span class="p">[</span><span class="s2">&quot;train_dict_som&quot;</span><span class="p">],</span> <span class="n">test_dict</span><span class="p">,</span> <span class="n">bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="p">,</span> <span class="n">Z_GRID</span><span class="p">,</span> <span class="n">max_iter</span><span class="o">=</span><span class="n">max_iter_som</span><span class="p">)</span>
+
+        <span class="c1"># 5. BPZ</span>
+        <span class="n">bpz_est</span> <span class="o">=</span> <span class="n">make_clean_stage</span><span class="p">(</span>
+            <span class="n">BPZliteEstimator</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;estimate_bpz_eo&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">model_dict</span><span class="p">[</span><span class="s2">&quot;model_bpz&quot;</span><span class="p">],</span> <span class="n">hdf5_groupname</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="n">bands</span><span class="o">=</span><span class="n">bands</span><span class="p">,</span> <span class="n">err_bands</span><span class="o">=</span><span class="n">err_bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="o">=</span><span class="n">ref_band</span><span class="p">,</span> <span class="n">redshift_col</span><span class="o">=</span><span class="s2">&quot;redshift&quot;</span><span class="p">,</span>
+            <span class="n">filter_list</span><span class="o">=</span><span class="n">bpz_filts</span><span class="p">,</span> <span class="n">zp_errors</span><span class="o">=</span><span class="n">bpz_zp</span><span class="p">,</span> <span class="n">mag_limits</span><span class="o">=</span><span class="n">mag_limits</span>
+        <span class="p">)</span>
+        <span class="n">pdf_bpz</span> <span class="o">=</span> <span class="n">bpz_est</span><span class="o">.</span><span class="n">estimate</span><span class="p">(</span><span class="n">test_handle</span><span class="p">)</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">pdf</span><span class="p">(</span><span class="n">Z_CENTERS</span><span class="p">)</span>
+
+        <span class="c1"># 6. FlexZBoost</span>
+        <span class="n">estimator_fzboost</span> <span class="o">=</span> <span class="n">make_clean_stage</span><span class="p">(</span>
+            <span class="n">FlexZBoostEstimator</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="s1">&#39;estimate_fzboost_eo&#39;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">model_dict</span><span class="p">[</span><span class="s2">&quot;model_fzboost&quot;</span><span class="p">],</span> <span class="n">bands</span><span class="o">=</span><span class="n">bands</span><span class="p">,</span> <span class="n">err_bands</span><span class="o">=</span><span class="n">err_bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="o">=</span><span class="n">ref_band</span><span class="p">,</span>
+            <span class="n">hdf5_groupname</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="n">zmin</span><span class="o">=</span><span class="mf">0.03</span><span class="p">,</span> <span class="n">zmax</span><span class="o">=</span><span class="n">ZMAX</span><span class="p">,</span> <span class="n">nzbins</span><span class="o">=</span><span class="n">NZ</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">mag_limits</span><span class="o">=</span><span class="n">mag_limits</span>
+        <span class="p">)</span>
+        <span class="n">pdf_fzboost</span> <span class="o">=</span> <span class="n">estimator_fzboost</span><span class="o">.</span><span class="n">estimate</span><span class="p">(</span><span class="n">test_handle</span><span class="p">)</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">pdf</span><span class="p">(</span><span class="n">Z_CENTERS</span><span class="p">)</span>
+
+        <span class="c1"># 7. AION</span>
+        <span class="n">aion_device</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;AION_PZ_DEVICE&quot;</span><span class="p">)</span>
+        <span class="n">aion_model</span><span class="p">,</span> <span class="n">codec_manager</span><span class="p">,</span> <span class="n">device</span> <span class="o">=</span> <span class="n">aion_pz</span><span class="o">.</span><span class="n">load_aion</span><span class="p">(</span><span class="n">device</span><span class="o">=</span><span class="n">aion_device</span><span class="p">)</span>
+        <span class="n">x_test_aion</span> <span class="o">=</span> <span class="n">aion_pz</span><span class="o">.</span><span class="n">build_design_matrix</span><span class="p">(</span><span class="n">aion_model</span><span class="p">,</span> <span class="n">codec_manager</span><span class="p">,</span> <span class="n">test_dict</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+        <span class="n">pdf_aion</span> <span class="o">=</span> <span class="n">aion_pz</span><span class="o">.</span><span class="n">predict_pz</span><span class="p">(</span><span class="n">model_dict</span><span class="p">[</span><span class="s2">&quot;aion_head&quot;</span><span class="p">],</span> <span class="n">x_test_aion</span><span class="p">)</span>
+        <span class="n">pdf_aion</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">pdf_aion</span><span class="p">[:,</span> <span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">pdf_aion</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">:])</span>
+
+        <span class="c1"># 7.6 PZFlow</span>
+        <span class="n">pzflow_model</span> <span class="o">=</span> <span class="n">model_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;model_pzflow&quot;</span><span class="p">)</span>
+        <span class="n">pzflow_bytes</span> <span class="o">=</span> <span class="n">model_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;model_pzflow_bytes&quot;</span><span class="p">)</span>
+        <span class="n">tmp_pzflow_path</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">pzflow_bytes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span>
+            <span class="n">fd</span><span class="p">,</span> <span class="n">tmp_pzflow_path</span> <span class="o">=</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">mkstemp</span><span class="p">(</span><span class="n">suffix</span><span class="o">=</span><span class="s2">&quot;.pkl&quot;</span><span class="p">)</span>
+            <span class="k">with</span> <span class="n">os</span><span class="o">.</span><span class="n">fdopen</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">tmp_file</span><span class="p">:</span>
+                <span class="n">tmp_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">pzflow_bytes</span><span class="p">)</span>
+            <span class="n">pzflow_model</span> <span class="o">=</span> <span class="n">tmp_pzflow_path</span>
+
+        <span class="n">pzflow_est</span> <span class="o">=</span> <span class="n">make_clean_stage</span><span class="p">(</span>
+            <span class="n">PZFlowEstimator</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;estimate_pzflow_eo&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">pzflow_model</span><span class="p">,</span> <span class="n">hdf5_groupname</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="n">zmin</span><span class="o">=</span><span class="mf">0.03</span><span class="p">,</span> <span class="n">zmax</span><span class="o">=</span><span class="n">ZMAX</span><span class="p">,</span> <span class="n">nzbins</span><span class="o">=</span><span class="n">NZ</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+            <span class="n">ref_band</span><span class="o">=</span><span class="n">ref_band</span><span class="p">,</span> <span class="n">column_names</span><span class="o">=</span><span class="n">bands</span><span class="p">,</span> <span class="n">mag_limits</span><span class="o">=</span><span class="n">mag_limits</span><span class="p">,</span>
+            <span class="n">include_mag_errors</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">redshift_col</span><span class="o">=</span><span class="s2">&quot;redshift&quot;</span>
+        <span class="p">)</span>
+        <span class="n">test_dict_for_flow</span> <span class="o">=</span> <span class="n">test_dict</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="k">if</span> <span class="s1">&#39;redshift&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">test_dict_for_flow</span><span class="p">:</span>
+            <span class="n">test_dict_for_flow</span><span class="p">[</span><span class="s1">&#39;redshift&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">test_dict_for_flow</span><span class="p">[</span><span class="nb">list</span><span class="p">(</span><span class="n">test_dict_for_flow</span><span class="o">.</span><span class="n">keys</span><span class="p">())[</span><span class="mi">0</span><span class="p">]]))</span>
+        <span class="n">test_handle_for_flow</span> <span class="o">=</span> <span class="n">TableHandle</span><span class="p">(</span><span class="s1">&#39;test_data_flow&#39;</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">test_dict_for_flow</span><span class="p">)</span>
+        <span class="n">pdf_pzflow</span> <span class="o">=</span> <span class="n">pzflow_est</span><span class="o">.</span><span class="n">estimate</span><span class="p">(</span><span class="n">test_handle_for_flow</span><span class="p">)</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">pdf</span><span class="p">(</span><span class="n">Z_CENTERS</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">tmp_pzflow_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">tmp_pzflow_path</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">tmp_pzflow_path</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
+                <span class="k">pass</span>
+
+        <span class="c1"># 7.7 GPz</span>
+        <span class="n">gpz_est</span> <span class="o">=</span> <span class="n">make_clean_stage</span><span class="p">(</span>
+            <span class="n">GPzEstimator</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;estimate_gpz_eo&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">model_dict</span><span class="p">[</span><span class="s2">&quot;model_gpz&quot;</span><span class="p">],</span> <span class="n">hdf5_groupname</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="n">bands</span><span class="o">=</span><span class="n">bands</span><span class="p">,</span> <span class="n">err_bands</span><span class="o">=</span><span class="n">err_bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="o">=</span><span class="n">ref_band</span><span class="p">,</span> <span class="n">redshift_col</span><span class="o">=</span><span class="s2">&quot;redshift&quot;</span><span class="p">,</span>
+            <span class="n">replace_error_vals</span><span class="o">=</span><span class="p">[</span><span class="mf">0.1</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">bands</span><span class="p">),</span> <span class="n">zmin</span><span class="o">=</span><span class="mf">0.03</span><span class="p">,</span> <span class="n">zmax</span><span class="o">=</span><span class="n">ZMAX</span><span class="p">,</span> <span class="n">nzbins</span><span class="o">=</span><span class="n">NZ</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">mag_limits</span><span class="o">=</span><span class="n">mag_limits</span>
+        <span class="p">)</span>
+        <span class="n">pdf_gpz</span> <span class="o">=</span> <span class="n">gpz_est</span><span class="o">.</span><span class="n">estimate</span><span class="p">(</span><span class="n">test_handle</span><span class="p">)</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">pdf</span><span class="p">(</span><span class="n">Z_CENTERS</span><span class="p">)</span>
+
+        <span class="c1"># 7.8 LePhare</span>
+        <span class="n">pdf_lephare</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">is_roman</span> <span class="ow">and</span> <span class="n">model_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;model_lephare&quot;</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">lp_bands</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;mag_u_lsst&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_g_lsst&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_r_lsst&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_i_lsst&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_z_lsst&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_y_lsst&#39;</span><span class="p">]</span>
+            <span class="n">lp_err_bands</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;mag_u_lsst_err&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_g_lsst_err&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_r_lsst_err&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_i_lsst_err&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_z_lsst_err&#39;</span><span class="p">,</span> <span class="s1">&#39;mag_y_lsst_err&#39;</span><span class="p">]</span>
+            <span class="n">lp_ref_band</span> <span class="o">=</span> <span class="s1">&#39;mag_i_lsst&#39;</span>
+            <span class="n">curr_bands</span> <span class="o">=</span> <span class="n">bands</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">bands</span><span class="p">)</span> <span class="o">==</span> <span class="mi">6</span> <span class="k">else</span> <span class="n">lp_bands</span>
+            <span class="n">curr_err_bands</span> <span class="o">=</span> <span class="n">err_bands</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">bands</span><span class="p">)</span> <span class="o">==</span> <span class="mi">6</span> <span class="k">else</span> <span class="n">lp_err_bands</span>
+            <span class="n">curr_ref_band</span> <span class="o">=</span> <span class="n">ref_band</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">bands</span><span class="p">)</span> <span class="o">==</span> <span class="mi">6</span> <span class="k">else</span> <span class="n">lp_ref_band</span>
+
+            <span class="n">lp_est_val</span> <span class="o">=</span> <span class="n">make_clean_stage</span><span class="p">(</span>
+                <span class="n">LephareEstimator</span><span class="p">,</span>
+                <span class="n">name</span><span class="o">=</span><span class="s2">&quot;estimate_lp_val_eo&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">model_dict</span><span class="p">[</span><span class="s2">&quot;model_lephare&quot;</span><span class="p">],</span> <span class="n">hdf5_groupname</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+                <span class="n">bands</span><span class="o">=</span><span class="n">curr_bands</span><span class="p">,</span> <span class="n">err_bands</span><span class="o">=</span><span class="n">curr_err_bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="o">=</span><span class="n">curr_ref_band</span><span class="p">,</span> <span class="n">redshift_col</span><span class="o">=</span><span class="s2">&quot;redshift&quot;</span>
+            <span class="p">)</span>
+            <span class="n">pdf_lephare</span> <span class="o">=</span> <span class="n">lp_est_val</span><span class="o">.</span><span class="n">estimate</span><span class="p">(</span><span class="n">test_handle</span><span class="p">)</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">pdf</span><span class="p">(</span><span class="n">Z_CENTERS</span><span class="p">)</span>
+
+        <span class="c1"># Clean all PDFs</span>
+        <span class="n">pdf_nn1</span> <span class="o">=</span> <span class="n">clean_pdf</span><span class="p">(</span><span class="n">pdf_nn1</span><span class="p">)</span>
+        <span class="n">pdf_nn2</span> <span class="o">=</span> <span class="n">clean_pdf</span><span class="p">(</span><span class="n">pdf_nn2</span><span class="p">)</span>
+        <span class="n">pdf_knn</span> <span class="o">=</span> <span class="n">clean_pdf</span><span class="p">(</span><span class="n">pdf_knn</span><span class="p">)</span>
+        <span class="n">pdf_som</span> <span class="o">=</span> <span class="n">clean_pdf</span><span class="p">(</span><span class="n">pdf_som</span><span class="p">)</span>
+        <span class="n">pdf_bpz</span> <span class="o">=</span> <span class="n">clean_pdf</span><span class="p">(</span><span class="n">pdf_bpz</span><span class="p">)</span>
+        <span class="n">pdf_fzboost</span> <span class="o">=</span> <span class="n">clean_pdf</span><span class="p">(</span><span class="n">pdf_fzboost</span><span class="p">)</span>
+        <span class="n">pdf_aion</span> <span class="o">=</span> <span class="n">clean_pdf</span><span class="p">(</span><span class="n">pdf_aion</span><span class="p">)</span>
+        <span class="n">pdf_pzflow</span> <span class="o">=</span> <span class="n">clean_pdf</span><span class="p">(</span><span class="n">pdf_pzflow</span><span class="p">)</span>
+        <span class="n">pdf_gpz</span> <span class="o">=</span> <span class="n">clean_pdf</span><span class="p">(</span><span class="n">pdf_gpz</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">pdf_lephare</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">pdf_lephare</span> <span class="o">=</span> <span class="n">clean_pdf</span><span class="p">(</span><span class="n">pdf_lephare</span><span class="p">)</span>
+
+        <span class="c1"># Combine</span>
+        <span class="n">test_pdfs</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">pdf_nn1</span><span class="p">,</span> <span class="n">pdf_nn2</span><span class="p">,</span> <span class="n">pdf_knn</span><span class="p">,</span> <span class="n">pdf_som</span><span class="p">,</span>
+            <span class="n">pdf_bpz</span><span class="p">,</span> <span class="n">pdf_fzboost</span><span class="p">,</span> <span class="n">pdf_aion</span><span class="p">,</span>
+            <span class="n">pdf_pzflow</span><span class="p">,</span> <span class="n">pdf_gpz</span>
+        <span class="p">]</span>
+        <span class="k">if</span> <span class="n">pdf_lephare</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">test_pdfs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pdf_lephare</span><span class="p">)</span>
+
+        <span class="n">train_errors</span> <span class="o">=</span> <span class="n">model_dict</span><span class="p">[</span><span class="s2">&quot;train_errors&quot;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">test_pdfs</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">train_errors</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+            <span class="n">n_missing</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">test_pdfs</span><span class="p">)</span> <span class="o">-</span> <span class="n">train_errors</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">padding</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">train_errors</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">:],</span> <span class="n">n_missing</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">train_errors</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">train_errors</span><span class="p">,</span> <span class="n">padding</span><span class="p">])</span>
+        <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">test_pdfs</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">train_errors</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+            <span class="n">train_errors</span> <span class="o">=</span> <span class="n">train_errors</span><span class="p">[:</span><span class="nb">len</span><span class="p">(</span><span class="n">test_pdfs</span><span class="p">)]</span>
+
+        <span class="n">weighted_pdfs</span><span class="p">,</span> <span class="n">val_expert_weights</span> <span class="o">=</span> <span class="n">apply_expert_weights_knn</span><span class="p">(</span>
+            <span class="n">test_dict</span><span class="p">,</span> <span class="n">test_pdfs</span><span class="p">,</span>
+            <span class="n">model_dict</span><span class="p">[</span><span class="s2">&quot;train_features_norm&quot;</span><span class="p">],</span> <span class="n">train_errors</span><span class="p">,</span>
+            <span class="n">model_dict</span><span class="p">[</span><span class="s2">&quot;features_mean&quot;</span><span class="p">],</span> <span class="n">model_dict</span><span class="p">[</span><span class="s2">&quot;features_std&quot;</span><span class="p">],</span>
+            <span class="n">bands</span><span class="p">,</span> <span class="n">ref_band</span><span class="p">,</span> <span class="n">K</span><span class="o">=</span><span class="n">K_val</span>
+        <span class="p">)</span>
+
+        <span class="n">calibrated_pdfs</span> <span class="o">=</span> <span class="n">aion_pz</span><span class="o">.</span><span class="n">apply_temperature</span><span class="p">(</span><span class="n">weighted_pdfs</span><span class="p">,</span> <span class="n">Z_CENTERS</span><span class="p">,</span> <span class="n">model_dict</span><span class="p">[</span><span class="s2">&quot;best_t&quot;</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">calibrated_pdfs</span></div>
+
+
+<div class="viewcode-block" id="CommitteeOfExperts.save">
+<a class="viewcode-back" href="../../autoapi/pontifex/estimators/index.html#pontifex.estimators.CommitteeOfExperts.save">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">save</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filepath</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">joblib</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model_dict</span><span class="p">,</span> <span class="n">filepath</span><span class="p">,</span> <span class="n">compress</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="CommitteeOfExperts.load">
+<a class="viewcode-back" href="../../autoapi/pontifex/estimators/index.html#pontifex.estimators.CommitteeOfExperts.load">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filepath</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model_dict</span> <span class="o">=</span> <span class="n">joblib</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">filepath</span><span class="p">)</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, The Pontifex Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

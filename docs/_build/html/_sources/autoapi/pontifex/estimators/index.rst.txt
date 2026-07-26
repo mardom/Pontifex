@@ -1,0 +1,117 @@
+pontifex.estimators
+===================
+
+.. py:module:: pontifex.estimators
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   pontifex.estimators.ZMAX
+   pontifex.estimators.NZ
+   pontifex.estimators.Z_GRID
+   pontifex.estimators.Z_CENTERS
+   pontifex.estimators.dz
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   pontifex.estimators.CommitteeOfExperts
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   pontifex.estimators.make_clean_stage
+   pontifex.estimators.get_bands_and_ref
+   pontifex.estimators.extract_features
+   pontifex.estimators.get_som_pdfs
+   pontifex.estimators.compute_expert_weights_knn
+   pontifex.estimators.apply_expert_weights_knn
+   pontifex.estimators.clean_pdf
+
+
+Module Contents
+---------------
+
+.. py:data:: ZMAX
+   :value: 3.0
+
+
+.. py:data:: NZ
+   :value: 301
+
+
+.. py:data:: Z_GRID
+
+.. py:data:: Z_CENTERS
+
+.. py:data:: dz
+
+.. py:function:: make_clean_stage(stage_class: Any, name: str, **kwargs: Any) -> Any
+
+   Instantiate a RAIL stage, set allow_overwrite=True, and clear its data store.
+
+
+.. py:function:: get_bands_and_ref(data_keys: List[str]) -> Tuple[List[str], str, bool]
+
+   Determine the band list and reference band based on catalog columns.
+
+
+.. py:function:: extract_features(data_dict: Dict[str, numpy.ndarray], bands: List[str], ref_band: str) -> numpy.ndarray
+
+   Extract magnitude and adjacent color features for KNN weighting.
+
+
+.. py:function:: get_som_pdfs(train_dict: Dict[str, numpy.ndarray], test_dict: Dict[str, numpy.ndarray], bands: List[str], ref_band: str, z_grid: numpy.ndarray, n_dim=15, m_dim=15, max_iter=5000) -> numpy.ndarray
+
+   Train MiniSom and return PDFs on the test set.
+
+
+.. py:function:: compute_expert_weights_knn(train_dict: Dict[str, numpy.ndarray], train_pdfs: List[numpy.ndarray], z_centers: numpy.ndarray, bands: List[str], ref_band: str) -> Tuple[numpy.ndarray, numpy.ndarray, numpy.ndarray, numpy.ndarray]
+
+   Calculate point-estimate errors for each expert and prepare features for weighting.
+
+
+.. py:function:: apply_expert_weights_knn(val_dict: Dict[str, numpy.ndarray], val_pdfs: List[numpy.ndarray], train_features_norm: numpy.ndarray, train_errors: numpy.ndarray, features_mean: numpy.ndarray, features_std: numpy.ndarray, bands: List[str], ref_band: str, K: int = 50) -> Tuple[numpy.ndarray, numpy.ndarray]
+
+   Apply distance-based KNN weighting to combine expert PDFs.
+
+
+.. py:function:: clean_pdf(pdf: numpy.ndarray) -> numpy.ndarray
+
+   Replace NaNs and Infs, and ensure proper normalization.
+
+
+.. py:class:: CommitteeOfExperts(is_ci: bool = False)
+
+   Committee of Experts model for combining multiple RAIL estimators via KNN weighting.
+
+
+   .. py:attribute:: is_ci
+      :value: False
+
+
+
+   .. py:attribute:: model_dict
+
+
+   .. py:method:: fit(train_dict: Dict[str, numpy.ndarray], bands: List[str], ref_band: str, is_roman: bool) -> Dict[str, Any]
+
+
+   .. py:method:: predict(test_dict: Dict[str, numpy.ndarray]) -> numpy.ndarray
+
+
+   .. py:method:: save(filepath: str) -> None
+
+
+   .. py:method:: load(filepath: str) -> None
+
+
