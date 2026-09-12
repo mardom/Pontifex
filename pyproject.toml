@@ -1,31 +1,37 @@
 [project]
 name = "pontifex"
-version = "0.1.0"
-description = "Pontifex: Footprint-corrected photometric redshift pipeline for LSST DESC"
+version = "1.0.0"
+description = "Pontifex: Dual-Path Gated Ensemble & Footprint-Corrected Photometric Redshift Pipeline"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
-    { name = "The Pontifex Team" },
+    { name = "The Pontifex Team & DESC Data Challenge Collaboration" },
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Astronomy"
 ]
 dependencies = [
-    "numpy<2",
+    "numpy",
     "pandas",
-    "astropy<7",
+    "astropy",
     "matplotlib",
     "scipy",
     "scikit-learn",
     "joblib",
     "minisom",
-    "tables_io<1.1",
-    "qp-prob<1.0",
+    "tables_io",
+    "qp-prob",
+    "optunity",
 ]
+
+[project.scripts]
+pontifex-estimate = "pontifex.cli:main"
 
 [project.optional-dependencies]
 dev = [

@@ -1,0 +1,33 @@
+name: pontifex_env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - numpy<2.0
+  - scipy
+  - pandas
+  - astropy
+  - matplotlib
+  - scikit-learn
+  - joblib
+  - h5py
+  - pyarrow
+  - pytest
+  - sphinx
+  - sphinx_rtd_theme
+  - pip
+  - pip:
+      - tables_io<1.1
+      - qp-prob<1.0
+      - optunity
+      - minisom
+      - rail-base
+      - rail-flexzboost
+      - rail-bpz
+      - rail-gpz
+      - rail-pzflow
+      - rail-sklearn
+      - rail-lephare
+      - lephare
+      - -e .

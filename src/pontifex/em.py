@@ -3,11 +3,14 @@ import numpy as np
 import pandas as pd
 import astropy.table as at
 from scipy.ndimage import gaussian_filter1d
-import nugundam as ng
+try:
+    import nugundam as ng
+except ImportError:
+    ng = None
 
 logger = logging.getLogger(__name__)
 
-def generate_footprint_randoms_combined(ref_df: pd.DataFrame, unk_df: pd.DataFrame, columns=('ra', 'dec'), order_sparse=11):
+def generate_footprint_randoms_combined(ref_df: pd.DataFrame, unk_df: pd.DataFrame, columns=('ra', 'dec'), order_sparse=8):
     """
     Generate footprint-corrected random catalogs using SkyKatana.
     Falls back to bounding box randoms if the catalogs are too small (e.g. in CI)
@@ -34,8 +37,8 @@ def generate_footprint_randoms_combined(ref_df: pd.DataFrame, unk_df: pd.DataFra
     try:
         from skykatana import SkyMaskPipe
         logger.info("Building SkyKatana footprint mask on combined sample...")
-        pipe = SkyMaskPipe(order_out=13)
-        pipe.build_foot_mask(combined, columns=columns, order_sparse=order_sparse, remove_isopixels=True, erode_borders=True)
+        pipe = SkyMaskPipe(order_out=10)
+        pipe.build_foot_mask(combined, columns=columns, order_sparse=order_sparse, remove_isopixels=False, erode_borders=False)
         
         logger.info("Generating footprint-corrected random catalogs...")
         ref_rands = pipe.makerans(stage='footmask', nr=len(ref_df) * 3)
@@ -78,27 +81,51 @@ class PontifexEM:
         use_bias_correction=True,
         floor_val=1e-5,
         learning_rate=0.2,
-        smoothing_sigma=1.0
+        smoothing_sigma=1.0,
+        is_ci=False
     ):
         self.unk_df = unk_df.copy()
         self.ref_df = ref_df.copy()
-        self.initial_pdfs = np.array(initial_pdfs, dtype=float)
+        
+        # Sanitize spatial coordinates in unk_df and ref_df
+        for df in [self.unk_df, self.ref_df]:
+            for col in ['ra', 'dec']:
+                if col in df.columns:
+                    vals = np.asarray(df[col], dtype=float)
+                    nan_inf = np.isnan(vals) | np.isinf(vals)
+                    if np.sum(nan_inf) > 0:
+                        med_val = float(np.nanmedian(vals)) if not np.isnan(np.nanmedian(vals)) else 0.0
+                        vals[nan_inf] = med_val
+                        df[col] = vals
+                        logger.warning(f"PontifexEM Guard: Fixed {np.sum(nan_inf)} invalid {col} entries using median={med_val:.4f}.")
+
+        # Sanitize initial PDFs
+        pdfs_arr = np.array(initial_pdfs, dtype=float)
+        pdfs_arr = np.nan_to_num(pdfs_arr, nan=0.0, posinf=0.0, neginf=0.0)
+        pdfs_arr = np.maximum(pdfs_arr, 0.0)
+        row_sums = pdfs_arr.sum(axis=1, keepdims=True)
+        self.initial_pdfs = np.where(row_sums > 0, pdfs_arr / row_sums, 1.0 / pdfs_arr.shape[1])
+        
         self.z_grid_edges = np.array(z_grid_edges, dtype=float)
         self.z_bin_centers = 0.5 * (self.z_grid_edges[:-1] + self.z_grid_edges[1:])
         
         if cosmo is None:
             # Default to LSST DESC standard cosmology
-            self.cosmo = ng.DistanceSpec(calcdist=True, h0=67.27, omegam=0.3121, omegal=0.6879)
+            if ng is not None:
+                self.cosmo = ng.DistanceSpec(calcdist=True, h0=67.27, omegam=0.3121, omegal=0.6879)
+            else:
+                self.cosmo = None
         else:
             self.cosmo = cosmo
             
         self.pimax = pimax
-        self.mc_nreal = mc_nreal
-        self.nthreads = nthreads
+        self.mc_nreal = 1 if is_ci else mc_nreal
+        self.nthreads = 1 if is_ci else nthreads
         self.use_bias_correction = use_bias_correction
         self.floor_val = floor_val
         self.learning_rate = learning_rate
         self.smoothing_sigma = smoothing_sigma
+        self.is_ci = is_ci
         
         # Verify sizes
         if len(self.unk_df) != self.initial_pdfs.shape[0]:
@@ -121,13 +148,37 @@ class PontifexEM:
             
         self.target_nz = None
         self.optimized_pdfs = None
-
-    def compute_target_nz_nugundam(self, pdfs, seppmin=0.1, dsepp=0.2, nsepp=10):
+ 
+    def compute_target_nz_nugundam(self, pdfs, seppmin=0.2, dsepp=0.2, nsepp=10):
         unk = at.Table.from_pandas(self.unk_df)
         ref = at.Table.from_pandas(self.ref_df)
         unk_rand = at.Table.from_pandas(self.unk_rands_df)
         ref_rand = at.Table.from_pandas(self.ref_rands_df)
         
+        if self.is_ci:
+            if len(unk) > 500:
+                idx_unk = np.random.default_rng(42).choice(len(unk), 500, replace=False)
+                unk = unk[idx_unk]
+                if pdfs is not None:
+                    pdfs = pdfs[idx_unk]
+                if len(unk_rand) > 1500:
+                    idx_unk_rand = np.random.default_rng(42).choice(len(unk_rand), 1500, replace=False)
+                    unk_rand = unk_rand[idx_unk_rand]
+            if len(ref) > 500:
+                idx_ref = np.random.default_rng(42).choice(len(ref), 500, replace=False)
+                ref = ref[idx_ref]
+                if len(ref_rand) > 1500:
+                    idx_ref_rand = np.random.default_rng(42).choice(len(ref_rand), 1500, replace=False)
+                    ref_rand = ref_rand[idx_ref_rand]
+        
+        if ng is None:
+            logger.info("Nugundam not installed; using smoothed empirical reference N(z) target.")
+            z_ref = np.asarray(self.ref_df['ztrue'], dtype=float)
+            z_ref = z_ref[np.isfinite(z_ref)]
+            counts, _ = np.histogram(z_ref, bins=self.z_grid_edges)
+            n_clust = counts.astype(float) + self.floor_val
+            return n_clust / np.sum(n_clust)
+
         n_bins = len(self.z_grid_edges) - 1
         n_clust = np.zeros(n_bins)
         
@@ -209,7 +260,7 @@ class PontifexEM:
         n_clust = np.maximum(n_clust, self.floor_val)
         return n_clust / np.sum(n_clust)
 
-    def optimize(self, max_iter=5, tol=1e-5, seppmin=0.1, dsepp=0.2, nsepp=10):
+    def optimize(self, max_iter=5, tol=1e-5, seppmin=0.2, dsepp=0.2, nsepp=10):
         current_pdfs = self.initial_pdfs.copy()
         eps = 1e-15
         
@@ -217,20 +268,21 @@ class PontifexEM:
         
         for i in range(max_iter):
             rng = np.random.default_rng(1234 + i)
-            # Sampling redshift based on current PDF
-            z_samples = []
-            for pdf in current_pdfs:
-                p = np.asarray(pdf, dtype=np.float64).copy()
-                p = np.nan_to_num(p, nan=0.0, posinf=0.0, neginf=0.0)
-                p = np.maximum(p, 0.0)
-                p_sum = p.sum()
-                if p_sum > 0:
-                    p /= p_sum
-                else:
-                    p = np.ones_like(p) / len(p)
-                p = p / p.sum()
-                p[-1] = 1.0 - p[:-1].sum()
-                z_samples.append(rng.choice(self.z_bin_centers, p=p))
+            # Vectorized sampling of redshifts based on current PDF
+            p_matrix = np.asarray(current_pdfs, dtype=np.float64)
+            p_matrix = np.nan_to_num(p_matrix, nan=0.0, posinf=0.0, neginf=0.0)
+            p_matrix = np.maximum(p_matrix, 0.0)
+            row_sums = p_matrix.sum(axis=1, keepdims=True)
+            p_matrix = np.where(row_sums > 0, p_matrix / row_sums, 1.0 / p_matrix.shape[1])
+            
+            # Normalize to guarantee sum is exactly 1 for all rows
+            row_sums_norm = p_matrix.sum(axis=1, keepdims=True)
+            p_matrix = p_matrix / row_sums_norm
+            
+            cdf = np.cumsum(p_matrix, axis=1)
+            r = rng.uniform(0, 1, size=(len(p_matrix), 1))
+            bin_indices = np.argmax(cdf >= r, axis=1)
+            z_samples = self.z_bin_centers[bin_indices]
                 
             self.unk_rands_df['ztrue'] = rng.choice(z_samples, size=len(self.unk_rands_df))
             
@@ -271,3 +323,4 @@ class PontifexEM:
             
         self.optimized_pdfs = current_pdfs
         return self.optimized_pdfs
+

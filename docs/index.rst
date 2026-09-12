@@ -19,6 +19,9 @@ Key Features:
    :maxdepth: 2
    :caption: Contents:
 
+   installation_and_pso
+   tutorial
+   experts
    autoapi/index
 
 

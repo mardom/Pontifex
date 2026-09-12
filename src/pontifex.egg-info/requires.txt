@@ -1,13 +1,14 @@
-numpy<2
+numpy
 pandas
-astropy<7
+astropy
 matplotlib
 scipy
 scikit-learn
 joblib
 minisom
-tables_io<1.1
-qp-prob<1.0
+tables_io
+qp-prob
+optunity
 
 [dev]
 pytest

@@ -4,9 +4,12 @@ pyproject.toml
 src/pontifex/__init__.py
 src/pontifex/em.py
 src/pontifex/estimators.py
+src/pontifex/guard.py
 src/pontifex/pipeline.py
 src/pontifex.egg-info/PKG-INFO
 src/pontifex.egg-info/SOURCES.txt
 src/pontifex.egg-info/dependency_links.txt
+src/pontifex.egg-info/entry_points.txt
 src/pontifex.egg-info/requires.txt
 src/pontifex.egg-info/top_level.txt
+tests/test_guard_and_resilience.py
