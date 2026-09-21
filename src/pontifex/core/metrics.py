@@ -62,7 +62,7 @@ def compute_moments_bias(
 def compute_photoz_point_metrics(z_phot: np.ndarray, z_spec: np.ndarray) -> Dict[str, float]:
     """Compute standard Rubin photo-z metrics: bias, sigma_MAD, and outlier fraction.
     
-    Outliers are defined as |delta_z| / (1 + z_spec) > 0.15.
+    Outliers are defined as abs(delta_z) / (1 + z_spec) > 0.15.
     """
     valid = np.isfinite(z_phot) & np.isfinite(z_spec)
     zp = z_phot[valid]

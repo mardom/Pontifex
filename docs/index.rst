@@ -1,29 +1,34 @@
-.. Pontifex documentation master file, created by
-   sphinx-quickstart on Sat Jul 25 2026.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
+.. Pontifex documentation master file
 
-Welcome to Pontifex's documentation!
+Welcome to Pontifex's Documentation!
 ====================================
 
-**Pontifex** is a modern, modular, footprint-corrected photometric redshift estimation pipeline. It builds on the LSST DESC photo-z WG's RAIL framework and integrates advanced spatial clustering calibration algorithms.
+**Pontifex** (v2.0.0) is a unified, high-performance photometric redshift and tomographic distribution reconstruction framework engineered for Vera C. Rubin Observatory Legacy Survey of Space and Time (LSST) and the Nancy Grace Roman Space Telescope.
 
-Key Features:
--------------
+Core Capabilities
+-----------------
 
-* **Committee of Experts**: Integrates multiple machine learning estimators (MLPs, miniSOM, normalizing flows, Gaussian processes, and templates) combined dynamically using local K-Nearest Neighbors gating.
-* **Footprint-Correction**: Corrects correlation functions for spatial area loss using `SkyKatana` boolean masking.
-* **Spatial Clustering Calibration**: Calibrates photo-z PDFs using dynamic EM optimization with `Nugundam`'s 3D spatial cross-correlations.
+* **Dual-Challenge Architecture**:
+  
+  * **``pontifex.pz``**: Individual galaxy photo-z probability density function (PDF) estimation using a Committee of Diverse Experts (Deep MLPs, MiniSom, PZFlow Normalizing Flows, GPz, FlexZBoost, BPZ-lite, LePhare) coupled with Expectation-Maximization footprint gating (Nugundam + SkyKatana).
+  * **``pontifex.nz``**: Tomographic ensemble distribution $n(z)$ reconstruction featuring Self-Organizing Map density ratio transfer reweighting (DIR), XGBoost classification with boundary entropy regularization, and correlated Gaussian Process spatial realizations ($\ell_z = 0.15$).
+
+* **Resilient Infrastructure (``pontifex.core``)**:
+  
+  * Automatic feature protection against NaNs, infinite records, unphysical error limits, and photometric outliers.
+  * Continuous Pogson flux transformations with noise-floor clipping.
+  * Native calculation of DESC Science Requirements Document (SRD) Stage IV tomographic moment biases ($\delta\mu$, $\delta\sigma$).
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: User Guide & Architecture:
 
+   architecture
    installation_and_pso
    tutorial
    experts
+   tomography_nz
    autoapi/index
-
 
 Indices and tables
 ==================

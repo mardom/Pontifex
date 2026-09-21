@@ -3,18 +3,26 @@ import sys
 sys.path.insert(0, os.path.abspath('../src'))
 
 project = 'Pontifex'
-copyright = '2026, The Pontifex Team'
+copyright = '2026, The Pontifex Team & DESC Collaboration'
 author = 'The Pontifex Team'
-release = '0.1.0'
+version = '2.0.0'
+release = '2.0.0'
 
 extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.napoleon',
     'sphinx.ext.viewcode',
+    'sphinx.ext.mathjax',
     'autoapi.extension',
 ]
 
 autoapi_dirs = ['../src/pontifex']
+autoapi_options = [
+    'members',
+    'undoc-members',
+    'show-inheritance',
+    'show-module-summary',
+]
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 

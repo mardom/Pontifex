@@ -1,5 +1,5 @@
 # Pontifex Core Dependencies
-numpy>=1.24.0,<2.0.0
+numpy>=1.24.0
 scipy>=1.10.0
 pandas>=2.0.0
 astropy>=5.0.0
@@ -7,9 +7,10 @@ matplotlib>=3.7.0
 scikit-learn>=1.2.0
 joblib>=1.2.0
 minisom>=2.3.0
-tables_io>=0.8.0,<1.1.0
-qp-prob>=0.8.0,<1.0.0
+tables_io>=0.8.0
+qp-prob>=0.8.0
 optunity>=1.2.5
+xgboost>=1.7.0
 h5py>=3.8.0
 pyarrow>=11.0.0
 
