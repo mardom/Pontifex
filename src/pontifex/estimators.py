@@ -6,6 +6,7 @@ from .pz.estimators import (
     Z_CENTERS,
     Z_GRID,
     extract_features,
+    HAS_RAIL,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "Z_CENTERS",
     "Z_GRID",
     "extract_features",
+    "HAS_RAIL",
 ]

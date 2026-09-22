@@ -15,10 +15,10 @@ import tempfile
 import tables_io
 
 # Ensure cache directory exists for HuggingFace models
-os.makedirs('/home/mardom/.cache/huggingface/hub', exist_ok=True)
+os.makedirs(os.path.expanduser('~/.cache/huggingface/hub'), exist_ok=True)
 
 from pontifex.guard import sanitize_input_catalog
-from pontifex.estimators import CommitteeOfExperts, Z_CENTERS, Z_GRID
+from pontifex.estimators import CommitteeOfExperts, Z_CENTERS, Z_GRID, HAS_RAIL
 from pontifex.em import PontifexEM
 from pontifex.pipeline import train_and_estimate
 
@@ -94,6 +94,7 @@ def test_sanitize_input_catalog_unphysical_errors():
     assert report["issues_by_column"]["mag_i_lsst_err"]["unphysical_err_count"] == 2
 
 
+@pytest.mark.skipif(not HAS_RAIL, reason="RAIL is required for end-to-end committee tests")
 def test_committee_resilience_to_corrupted_inputs():
     """Test that CommitteeOfExperts fits and predicts on corrupted input data without failing."""
     train_dict = create_synthetic_corrupted_catalog(n_samples=250, seed=123)
@@ -163,6 +164,7 @@ def test_pontifex_em_resilience_to_corrupted_coordinates_and_pdfs():
     assert not np.any(np.isinf(opt_pdfs))
 
 
+@pytest.mark.skipif(not HAS_RAIL, reason="RAIL is required for end-to-end train_and_estimate tests")
 def test_train_and_estimate_end_to_end_resilience():
     """End-to-end test of train_and_estimate using HDF5 catalog files with intentional corruptions."""
     train_dict = create_synthetic_corrupted_catalog(n_samples=200, seed=111)
