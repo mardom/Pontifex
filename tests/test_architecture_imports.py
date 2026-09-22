@@ -8,7 +8,7 @@ def test_top_level_submodules():
     assert hasattr(pontifex, "core")
     assert hasattr(pontifex, "pz")
     assert hasattr(pontifex, "nz")
-    assert pontifex.__version__ == "2.0.0"
+    assert pontifex.__version__ == "2.0.1"
 
 
 def test_backwards_compatibility_shims():
@@ -38,3 +38,4 @@ def test_backwards_compatibility_shims():
     assert callable(legacy_em)
     assert callable(legacy_pipe)
     assert callable(legacy_est)
+

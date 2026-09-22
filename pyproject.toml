@@ -1,6 +1,6 @@
 [project]
 name = "pontifex"
-version = "2.0.0"
+version = "2.0.1"
 description = "Pontifex: Unified Photometric Redshift & Tomographic Distribution Pipeline (pz + nz)"
 readme = "README.md"
 requires-python = ">=3.11"
