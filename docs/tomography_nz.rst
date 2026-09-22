@@ -77,3 +77,4 @@ Quickstart Tutorial: Running NZ Challenge Pipelines
        output_bhat_file="submission/bhat.hdf5",
        output_nz_samples_file="submission/nz_samples.hdf5",
    )
+

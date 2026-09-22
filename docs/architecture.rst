@@ -85,3 +85,4 @@ The ``pontifex.nz`` subpackage delivers optimal tomographic bin assignment, empi
 * **``pontifex.nz.runner``**:
 
   * Standardized challenge interfaces for Taskset 1 (representative), Taskset 2 (non-representative), and Taskset 3 (realization ensembles).
+

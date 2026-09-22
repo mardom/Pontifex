@@ -78,3 +78,4 @@ def test_spatial_sampler_and_qp():
     ens = create_qp_samples_ensemble(dummy_hists, z_grid, n_realizations=n_realizations)
     assert ens is not None
     assert len(ens) == n_tomo_bins * n_realizations
+

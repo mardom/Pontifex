@@ -92,3 +92,4 @@ def test_photoz_point_metrics():
     assert abs(metrics["bias"]) < 0.05
     assert metrics["sigma_mad"] < 0.05
     assert metrics["outlier_rate"] == 0.0
+
