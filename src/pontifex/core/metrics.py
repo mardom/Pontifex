@@ -21,7 +21,9 @@ def compute_distribution_moments(z_grid: np.ndarray, nz: np.ndarray) -> Tuple[fl
     sigma : float
         Redshift dispersion (standard deviation).
     """
-    _trapz = getattr(np, "trapezoid", np.trapz)
+    _trapz = getattr(np, "trapezoid", None) or getattr(np, "trapz", None)
+    if _trapz is None:
+        from scipy.integrate import trapezoid as _trapz
     norm = _trapz(nz, z_grid) if len(z_grid) == len(nz) else np.sum(nz)
     if norm <= 0:
         return 0.0, 0.0

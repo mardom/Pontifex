@@ -91,7 +91,7 @@ class PontifexEM:
         for df in [self.unk_df, self.ref_df]:
             for col in ['ra', 'dec']:
                 if col in df.columns:
-                    vals = np.asarray(df[col], dtype=float)
+                    vals = np.array(df[col], dtype=float, copy=True)
                     nan_inf = np.isnan(vals) | np.isinf(vals)
                     if np.sum(nan_inf) > 0:
                         med_val = float(np.nanmedian(vals)) if not np.isnan(np.nanmedian(vals)) else 0.0
