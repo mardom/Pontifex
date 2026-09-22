@@ -79,3 +79,4 @@ def get_bands_and_ref(columns: List[str]) -> Tuple[List[str], str, bool]:
         bands = ["u", "g", "r", "i", "z", "y"]
         ref_band = "i"
     return bands, ref_band, has_roman
+

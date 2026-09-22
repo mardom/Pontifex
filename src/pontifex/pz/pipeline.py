@@ -7,8 +7,21 @@ import pandas as pd
 from scipy.interpolate import interp1d
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
-import aion_pz
-from .estimators import CommitteeOfExperts, get_bands_and_ref, Z_CENTERS, Z_GRID, extract_features
+try:
+    import aion_pz
+    HAS_AION = True
+except (ImportError, ModuleNotFoundError):
+    HAS_AION = False
+    aion_pz = None
+
+from .estimators import (
+    CommitteeOfExperts,
+    get_bands_and_ref,
+    Z_CENTERS,
+    Z_GRID,
+    extract_features,
+    HAS_RAIL,
+)
 from .em import PontifexEM
 from ..core.guard import sanitize_input_catalog
 
@@ -26,6 +39,16 @@ def train_and_estimate(
     Train the committee of experts, perform footprint-corrected EM calibration
     via Nugundam, and predict on the test catalog.
     """
+    if not HAS_AION or aion_pz is None:
+        raise ImportError(
+            "aion_pz is required to load challenge catalogs and run train_and_estimate. "
+            "Please ensure aion_pz is available in your environment."
+        )
+    if not HAS_RAIL:
+        raise ImportError(
+            "RAIL (rail-base, rail-estimation) is required to run train_and_estimate. "
+            "Please install RAIL in your environment."
+        )
     logger.info(f"Loading catalogs: train={train_file}, test={test_file}")
     train_dict = aion_pz.load_catalog(train_file)
     test_dict = aion_pz.load_catalog(test_file)
@@ -156,6 +179,16 @@ def estimate_only(
     """
     Run committee prediction and Nugundam EM calibration selectively on blended and outlier sources using saved model weights.
     """
+    if not HAS_AION or aion_pz is None:
+        raise ImportError(
+            "aion_pz is required to load challenge catalogs and run estimate_only. "
+            "Please ensure aion_pz is available in your environment."
+        )
+    if not HAS_RAIL:
+        raise ImportError(
+            "RAIL (rail-base, rail-estimation) is required to run estimate_only. "
+            "Please install RAIL in your environment."
+        )
     logger.info(f"Loading model weights from {model_file}...")
     committee = CommitteeOfExperts()
     committee.load(str(model_file))

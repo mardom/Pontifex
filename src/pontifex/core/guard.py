@@ -132,3 +132,4 @@ def sanitize_input_catalog(
         warnings.warn(full_warning, UserWarning, stacklevel=2)
 
     return sanitized, guard_report
+

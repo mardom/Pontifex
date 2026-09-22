@@ -44,17 +44,43 @@ except Exception:
 
 # 2. Import RAIL stages and MiniSom
 import qp
-from rail.core.data import TableHandle
-from rail.estimation.algos import sklearn_neurnet, k_nearneigh, flexzboost
-from rail.estimation.algos.bpz_lite import BPZliteInformer, BPZliteEstimator
-from rail.estimation.algos.flexzboost import FlexZBoostInformer, FlexZBoostEstimator
-from rail.estimation.algos.pzflow_nf import PZFlowInformer, PZFlowEstimator
-from rail.estimation.algos.gpz import GPzInformer, GPzEstimator
-from rail.estimation.algos.lephare import LephareInformer, LephareEstimator
-import lephare as lp
 from minisom import MiniSom
 
-import aion_pz
+try:
+    from rail.core.data import TableHandle
+    from rail.estimation.algos import sklearn_neurnet, k_nearneigh, flexzboost
+    from rail.estimation.algos.bpz_lite import BPZliteInformer, BPZliteEstimator
+    from rail.estimation.algos.flexzboost import FlexZBoostInformer, FlexZBoostEstimator
+    from rail.estimation.algos.pzflow_nf import PZFlowInformer, PZFlowEstimator
+    from rail.estimation.algos.gpz import GPzInformer, GPzEstimator
+    from rail.estimation.algos.lephare import LephareInformer, LephareEstimator
+    HAS_RAIL = True
+except (ImportError, ModuleNotFoundError):
+    HAS_RAIL = False
+    TableHandle = None
+    sklearn_neurnet = None
+    k_nearneigh = None
+    flexzboost = None
+    BPZliteInformer = BPZliteEstimator = None
+    FlexZBoostInformer = FlexZBoostEstimator = None
+    PZFlowInformer = PZFlowEstimator = None
+    GPzInformer = GPzEstimator = None
+    LephareInformer = LephareEstimator = None
+
+try:
+    import lephare as lp
+    HAS_LEPHARE = True
+except (ImportError, ModuleNotFoundError):
+    HAS_LEPHARE = False
+    lp = None
+
+try:
+    import aion_pz
+    HAS_AION = True
+except (ImportError, ModuleNotFoundError):
+    HAS_AION = False
+    aion_pz = None
+
 try:
     from ..core.guard import sanitize_input_catalog
 except ImportError:
@@ -74,7 +100,10 @@ def get_original_bands(keys):
             sorted_orig.append(b)
     return sorted_orig
 
-original_snn_make_color_data = sklearn_neurnet.make_color_data
+if HAS_RAIL and hasattr(sklearn_neurnet, "make_color_data"):
+    original_snn_make_color_data = sklearn_neurnet.make_color_data
+else:
+    original_snn_make_color_data = None
 
 def get_expected_features_count(estimator_name):
     import sys
@@ -135,6 +164,8 @@ def get_expected_features_count(estimator_name):
     return None
 
 def snn_make_color_data_patched(data_dict, bands, ref_band, nondet_val):
+    if original_snn_make_color_data is None:
+        return np.empty((0, 0))
     base_features = original_snn_make_color_data(data_dict, bands, ref_band, nondet_val)
     
     snr_cols = [f"snr_{b}" for b in bands if f"snr_{b}" in data_dict]
@@ -162,11 +193,17 @@ def snn_make_color_data_patched(data_dict, bands, ref_band, nondet_val):
             return combined[:, :n_expected]
     return combined
 
-sklearn_neurnet.make_color_data = snn_make_color_data_patched
+if HAS_RAIL and hasattr(sklearn_neurnet, "make_color_data"):
+    sklearn_neurnet.make_color_data = snn_make_color_data_patched
 
-original_fz_make_color_data = flexzboost.make_color_data
+if HAS_RAIL and hasattr(flexzboost, "make_color_data"):
+    original_fz_make_color_data = flexzboost.make_color_data
+else:
+    original_fz_make_color_data = None
 
 def fz_make_color_data_patched(data_dict, bands, err_bands, ref_band, include_mag_err=False):
+    if original_fz_make_color_data is None:
+        return np.empty((0, 0))
     base_features = original_fz_make_color_data(data_dict, bands, err_bands, ref_band, include_mag_err)
     
     snr_cols = [f"snr_{b}" for b in bands if f"snr_{b}" in data_dict]
@@ -191,11 +228,17 @@ def fz_make_color_data_patched(data_dict, bands, err_bands, ref_band, include_ma
             return combined[:, :n_expected]
     return combined
 
-flexzboost.make_color_data = fz_make_color_data_patched
+if HAS_RAIL and hasattr(flexzboost, "make_color_data"):
+    flexzboost.make_color_data = fz_make_color_data_patched
 
-original_knn_computecolordata = k_nearneigh._computecolordata
+if HAS_RAIL and hasattr(k_nearneigh, "_computecolordata"):
+    original_knn_computecolordata = k_nearneigh._computecolordata
+else:
+    original_knn_computecolordata = None
 
 def knn_computecolordata_patched(df, ref_column_name, column_names, only_color):
+    if original_knn_computecolordata is None:
+        return np.empty((0, 0))
     base_features = original_knn_computecolordata(df, ref_column_name, column_names, only_color)
     
     snr_cols = [f"snr_{b}" for b in column_names if f"snr_{b}" in df.columns]
@@ -220,11 +263,17 @@ def knn_computecolordata_patched(df, ref_column_name, column_names, only_color):
             return combined[:, :n_expected]
     return combined
 
-k_nearneigh._computecolordata = knn_computecolordata_patched
+if HAS_RAIL and hasattr(k_nearneigh, "_computecolordata"):
+    k_nearneigh._computecolordata = knn_computecolordata_patched
 
-original_aion_build_design_matrix = aion_pz.build_design_matrix
+if HAS_AION and hasattr(aion_pz, "build_design_matrix"):
+    original_aion_build_design_matrix = aion_pz.build_design_matrix
+else:
+    original_aion_build_design_matrix = None
 
 def aion_build_design_matrix_patched(model, codec_manager, data, device, **kw):
+    if original_aion_build_design_matrix is None:
+        return np.empty((0, 0))
     base_matrix = original_aion_build_design_matrix(model, codec_manager, data, device, **kw)
     orig_bands = get_original_bands(list(data.keys()))
     
@@ -250,13 +299,19 @@ def aion_build_design_matrix_patched(model, codec_manager, data, device, **kw):
             return combined[:, :n_expected]
     return combined
 
-aion_pz.build_design_matrix = aion_build_design_matrix_patched
+if HAS_AION and hasattr(aion_pz, "build_design_matrix"):
+    aion_pz.build_design_matrix = aion_build_design_matrix_patched
 
 # Configure loggers for estimators
-FlexZBoostInformer.log = logging.getLogger("FlexZBoostInformer")
-FlexZBoostEstimator.log = logging.getLogger("FlexZBoostEstimator")
-GPzInformer.log = logging.getLogger("GPzInformer")
-GPzEstimator.log = logging.getLogger("GPzEstimator")
+if HAS_RAIL:
+    if FlexZBoostInformer is not None:
+        FlexZBoostInformer.log = logging.getLogger("FlexZBoostInformer")
+    if FlexZBoostEstimator is not None:
+        FlexZBoostEstimator.log = logging.getLogger("FlexZBoostEstimator")
+    if GPzInformer is not None:
+        GPzInformer.log = logging.getLogger("GPzInformer")
+    if GPzEstimator is not None:
+        GPzEstimator.log = logging.getLogger("GPzEstimator")
 
 ZMAX = 3.0
 NZ = 301
@@ -579,6 +634,11 @@ class CommitteeOfExperts:
 
     def optimize_hyperparameters(self, train_dict: Dict[str, np.ndarray], bands: List[str], ref_band: str) -> Dict[str, Any]:
         """Perform PSO hyperparameter optimization for each expert using optunity."""
+        if not HAS_RAIL:
+            raise ImportError(
+                "RAIL (rail-base, rail-estimation) is required for CommitteeOfExperts hyperparameter optimization. "
+                "Please install RAIL in your environment."
+            )
         import optunity
         import joblib
         from sklearn.preprocessing import StandardScaler
@@ -1042,6 +1102,11 @@ class CommitteeOfExperts:
         return results
 
     def fit(self, train_dict: Dict[str, np.ndarray], bands: List[str], ref_band: str, is_roman: bool, optimize_hyperparams: bool = False) -> Dict[str, Any]:
+        if not HAS_RAIL:
+            raise ImportError(
+                "RAIL (rail-base, rail-estimation) is required to train CommitteeOfExperts. "
+                "Please install RAIL in your environment."
+            )
         train_dict, _ = sanitize_input_catalog(train_dict, raise_warnings=True)
         n_train = len(train_dict['redshift'])
         is_ci = self.is_ci or (n_train < 1500)
@@ -1423,6 +1488,11 @@ class CommitteeOfExperts:
         return self.model_dict
 
     def predict(self, test_dict: Dict[str, np.ndarray]) -> np.ndarray:
+        if not HAS_RAIL:
+            raise ImportError(
+                "RAIL (rail-base, rail-estimation) is required to predict with CommitteeOfExperts. "
+                "Please install RAIL in your environment."
+            )
         test_dict, _ = sanitize_input_catalog(test_dict, raise_warnings=True)
         model_dict = self.model_dict
         bands = model_dict["bands"]

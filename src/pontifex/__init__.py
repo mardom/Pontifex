@@ -15,7 +15,7 @@ from . import nz
 
 # Backwards compatibility top-level convenience exports
 from .pz.pipeline import train_and_estimate, estimate_only
-from .pz.estimators import CommitteeOfExperts, Z_CENTERS, Z_GRID
+from .pz.estimators import CommitteeOfExperts, Z_CENTERS, Z_GRID, HAS_RAIL
 from .pz.em import PontifexEM
 from .core.guard import sanitize_input_catalog
 from .core.features import extract_features, mag_to_flux, flux_to_mag
@@ -35,4 +35,5 @@ __all__ = [
     "flux_to_mag",
     "Z_CENTERS",
     "Z_GRID",
+    "HAS_RAIL",
 ]

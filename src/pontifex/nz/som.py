@@ -98,3 +98,4 @@ def compute_som_density_weights(
     weights = np.clip(weights, 0.05, 20.0)
     weights /= np.mean(weights)
     return weights
+

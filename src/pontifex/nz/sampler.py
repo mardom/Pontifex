@@ -99,3 +99,4 @@ def create_qp_samples_ensemble(
     ens_samples = qp.hist.create_ensemble(grid_edges, realization_matrix)
     ens_samples.set_ancil(dict(bin_idx=bin_idx, i_realization=i_real))
     return ens_samples
+

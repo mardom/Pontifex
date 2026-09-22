@@ -98,3 +98,4 @@ def predict_tomographic_bins(
 
     bin_assignments = np.argmax(probs, axis=1).astype(int)
     return bin_assignments, probs
+
