@@ -548,21 +548,8 @@ def apply_expert_weights_knn(val_dict: Dict[str, np.ndarray], val_pdfs: List[np.
     for k in range(n_experts):
         neighbor_errors = train_errors[k, indices]
         mean_err = np.sum(kernel_weights * neighbor_errors, axis=1)
-        val_expert_weights[:, k] = 1.0 / (mean_err + 1e-5)
-
-    # Position-dependent PCA feature space weight boosting
-    if pca_val_norm is not None and pca_val_norm.shape[1] >= 2:
-        pc1 = pca_val_norm[:, 0]
-        pc2 = pca_val_norm[:, 1]
-        
-        # Ellipsoidal distance in PCA feature space
-        ell_dist = ((pc1 - 2.5)**2 / (3.2**2)) + ((pc2 + 2.5)**2 / (3.5**2))
-        pca_weight_boost = 1.0 + 2.5 * np.exp(-0.5 * ell_dist)
-        
-        # Apply continuous position-dependent boost to broad-prior template experts
-        for k in range(n_experts):
-            if k in [4, 6, 7]: # Broad prior BPZ/LePhare physical experts
-                val_expert_weights[:, k] *= pca_weight_boost
+        # Apply realistic physical error floor (0.015) preventing zero-error monopolization
+        val_expert_weights[:, k] = 1.0 / np.maximum(mean_err, 0.015)
 
     val_expert_weights_sum = np.sum(val_expert_weights, axis=1, keepdims=True)
     val_expert_weights = val_expert_weights / (val_expert_weights_sum + 1e-15)

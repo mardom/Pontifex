@@ -172,12 +172,11 @@ class PontifexEM:
                     ref_rand = ref_rand[idx_ref_rand]
         
         if ng is None:
-            logger.info("Nugundam not installed; using smoothed empirical reference N(z) target.")
-            z_ref = np.asarray(self.ref_df['ztrue'], dtype=float)
-            z_ref = z_ref[np.isfinite(z_ref)]
-            counts, _ = np.histogram(z_ref, bins=self.z_grid_edges)
-            n_clust = counts.astype(float) + self.floor_val
-            return n_clust / np.sum(n_clust)
+            logger.info("Nugundam not installed; skipping spatial clustering EM calibration to prevent selection bias imprinting.")
+            # Return current ensemble N(z) unchanged so that ratio is 1.0 (no selection bias distortion)
+            current_nz = np.sum(pdfs, axis=0) if pdfs is not None else np.ones(len(self.z_grid_edges) - 1)
+            norm = np.sum(current_nz)
+            return current_nz / (norm if norm > 0 else 1.0)
 
         n_bins = len(self.z_grid_edges) - 1
         n_clust = np.zeros(n_bins)

@@ -98,7 +98,7 @@ def train_and_estimate(
     else:
         is_blend = np.zeros(len(initial_pdfs), dtype=bool)
 
-    # Calculate 3D PCA Outlier Subvolume Mask using smooth curved ellipsoidal contour
+    # Calculate 3D PCA Outlier Subvolume Mask using principled Mahalanobis distance
     feat_test = extract_features(test_dict, bands, ref_band)
     if hasattr(committee, "scaler") and committee.scaler is not None:
         feat_norm = committee.scaler.transform(feat_test)
@@ -112,9 +112,10 @@ def train_and_estimate(
         pca = PCA(n_components=3).fit(feat_norm)
         pca_space = pca.transform(feat_norm)
 
-    # Ellipsoidal Outlier Region centered at [PC1=2.5, PC2=-2.5] enclosing the concentration of green/red outliers
-    ell_dist = ((pca_space[:, 0] - 2.5)**2 / (3.2**2)) + ((pca_space[:, 1] + 2.5)**2 / (3.5**2))
-    is_pca_outlier_vol = ell_dist <= 1.0
+    # Automated Mahalanobis distance in PCA feature space (chi2 critical value = 11.34 for df=3, p=0.01)
+    pca_cov_diag = np.var(pca_space, axis=0) + 1e-10
+    mahalanobis_sq = np.sum((pca_space - np.mean(pca_space, axis=0))**2 / pca_cov_diag, axis=1)
+    is_pca_outlier_vol = mahalanobis_sq > 11.34
     is_em_triggered = is_blend | is_pca_outlier_vol
 
     n_triggered = int(np.sum(is_em_triggered))
@@ -231,9 +232,10 @@ def estimate_only(
         pca = PCA(n_components=3).fit(feat_norm)
         pca_space = pca.transform(feat_norm)
 
-    # Ellipsoidal Outlier Region centered at [PC1=2.5, PC2=-2.5] enclosing the concentration of green/red outliers
-    ell_dist = ((pca_space[:, 0] - 2.5)**2 / (3.2**2)) + ((pca_space[:, 1] + 2.5)**2 / (3.5**2))
-    is_pca_outlier_vol = ell_dist <= 1.0
+    # Automated Mahalanobis distance in PCA feature space (chi2 critical value = 11.34 for df=3, p=0.01)
+    pca_cov_diag = np.var(pca_space, axis=0) + 1e-10
+    mahalanobis_sq = np.sum((pca_space - np.mean(pca_space, axis=0))**2 / pca_cov_diag, axis=1)
+    is_pca_outlier_vol = mahalanobis_sq > 11.34
     is_em_triggered = is_blend | is_pca_outlier_vol
 
     n_triggered = int(np.sum(is_em_triggered))
