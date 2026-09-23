@@ -27,3 +27,5 @@ results/*.hdf5
 results/*.pkl
 output_estimate_*.hdf5
 
+report/
+reports/
