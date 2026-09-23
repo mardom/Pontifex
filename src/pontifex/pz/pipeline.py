@@ -85,19 +85,6 @@ def train_and_estimate(
     # 3. Perform Nugundam EM Calibration selectively for blended & PCA-outlier sources
     logger.info("Identifying blended & outlier candidate sources via color variance and PCA feature subvolume...")
     colors = []
-    for i in range(len(bands) - 1):
-        if bands[i] in test_dict and bands[i+1] in test_dict:
-            c = np.asarray(test_dict[bands[i]], dtype=float) - np.asarray(test_dict[bands[i+1]], dtype=float)
-            colors.append(np.nan_to_num(c, nan=0.0))
-    if len(colors) > 0:
-        colors_mat = np.column_stack(colors)
-        color_var = np.var(colors_mat, axis=1)
-        med_var = np.median(color_var)
-        blend_score = color_var / (med_var + 1e-15)
-        is_blend = blend_score > 4.5
-    else:
-        is_blend = np.zeros(len(initial_pdfs), dtype=bool)
-
     # Calculate 3D PCA Outlier Subvolume Mask using principled Mahalanobis distance
     feat_test = extract_features(test_dict, bands, ref_band)
     if hasattr(committee, "scaler") and committee.scaler is not None:
@@ -116,7 +103,7 @@ def train_and_estimate(
     pca_cov_diag = np.var(pca_space, axis=0) + 1e-10
     mahalanobis_sq = np.sum((pca_space - np.mean(pca_space, axis=0))**2 / pca_cov_diag, axis=1)
     is_pca_outlier_vol = mahalanobis_sq > 11.34
-    is_em_triggered = is_blend | is_pca_outlier_vol
+    is_em_triggered = is_pca_outlier_vol
 
     n_triggered = int(np.sum(is_em_triggered))
     calibrated_pdfs = initial_pdfs.copy()
@@ -205,20 +192,6 @@ def estimate_only(
     # 2. Identify blended and PCA outlier candidate sources
     bands = committee.model_dict["bands"]
     ref_band = committee.model_dict.get("ref_band", "i_lsst")
-    colors = []
-    for i in range(len(bands) - 1):
-        if bands[i] in test_dict and bands[i+1] in test_dict:
-            c = np.asarray(test_dict[bands[i]], dtype=float) - np.asarray(test_dict[bands[i+1]], dtype=float)
-            colors.append(np.nan_to_num(c, nan=0.0))
-    if len(colors) > 0:
-        colors_mat = np.column_stack(colors)
-        color_var = np.var(colors_mat, axis=1)
-        med_var = np.median(color_var)
-        blend_score = color_var / (med_var + 1e-15)
-        is_blend = blend_score > 4.5
-    else:
-        is_blend = np.zeros(len(initial_pdfs), dtype=bool)
-
     feat_test = extract_features(test_dict, bands, ref_band)
     if hasattr(committee, "scaler") and committee.scaler is not None:
         feat_norm = committee.scaler.transform(feat_test)
@@ -236,7 +209,7 @@ def estimate_only(
     pca_cov_diag = np.var(pca_space, axis=0) + 1e-10
     mahalanobis_sq = np.sum((pca_space - np.mean(pca_space, axis=0))**2 / pca_cov_diag, axis=1)
     is_pca_outlier_vol = mahalanobis_sq > 11.34
-    is_em_triggered = is_blend | is_pca_outlier_vol
+    is_em_triggered = is_pca_outlier_vol
 
     n_triggered = int(np.sum(is_em_triggered))
     calibrated_pdfs = initial_pdfs.copy()

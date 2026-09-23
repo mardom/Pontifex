@@ -437,7 +437,8 @@ def get_som_pdfs(train_dict: Dict[str, np.ndarray], test_dict: Dict[str, np.ndar
 
     test_pdfs = gaussian_filter1d(test_pdfs, sigma=1.0, axis=1)
     row_sums = test_pdfs.sum(axis=1, keepdims=True)
-    test_pdfs = np.where(row_sums > 0, test_pdfs / row_sums, 1.0 / len(Z_CENTERS))
+    safe_sums = np.where(row_sums > 0, row_sums, 1.0)
+    test_pdfs = np.where(row_sums > 0, test_pdfs / safe_sums, 1.0 / len(Z_CENTERS))
     return test_pdfs
 
 
@@ -571,7 +572,8 @@ def clean_pdf(pdf: np.ndarray) -> np.ndarray:
     pdf = np.nan_to_num(pdf, nan=0.0, posinf=0.0, neginf=0.0)
     pdf = np.maximum(pdf, 0.0)
     row_sums = pdf.sum(axis=1, keepdims=True)
-    pdf = np.where(row_sums > 0, pdf / row_sums, 1.0 / pdf.shape[1])
+    safe_sums = np.where(row_sums > 0, row_sums, 1.0)
+    pdf = np.where(row_sums > 0, pdf / safe_sums, 1.0 / pdf.shape[1])
     return pdf
 
 

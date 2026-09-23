@@ -104,7 +104,8 @@ class PontifexEM:
         pdfs_arr = np.nan_to_num(pdfs_arr, nan=0.0, posinf=0.0, neginf=0.0)
         pdfs_arr = np.maximum(pdfs_arr, 0.0)
         row_sums = pdfs_arr.sum(axis=1, keepdims=True)
-        self.initial_pdfs = np.where(row_sums > 0, pdfs_arr / row_sums, 1.0 / pdfs_arr.shape[1])
+        safe_sums = np.where(row_sums > 0, row_sums, 1.0)
+        self.initial_pdfs = np.where(row_sums > 0, pdfs_arr / safe_sums, 1.0 / pdfs_arr.shape[1])
         
         self.z_grid_edges = np.array(z_grid_edges, dtype=float)
         self.z_bin_centers = 0.5 * (self.z_grid_edges[:-1] + self.z_grid_edges[1:])
@@ -260,6 +261,11 @@ class PontifexEM:
         return n_clust / np.sum(n_clust)
 
     def optimize(self, max_iter=5, tol=1e-5, seppmin=0.2, dsepp=0.2, nsepp=10):
+        if ng is None:
+            logger.info("Nugundam not installed; skipping spatial clustering EM calibration to preserve honest base ensemble PDFs.")
+            self.optimized_pdfs = self.initial_pdfs.copy()
+            return self.optimized_pdfs
+
         current_pdfs = self.initial_pdfs.copy()
         eps = 1e-15
         
@@ -272,7 +278,8 @@ class PontifexEM:
             p_matrix = np.nan_to_num(p_matrix, nan=0.0, posinf=0.0, neginf=0.0)
             p_matrix = np.maximum(p_matrix, 0.0)
             row_sums = p_matrix.sum(axis=1, keepdims=True)
-            p_matrix = np.where(row_sums > 0, p_matrix / row_sums, 1.0 / p_matrix.shape[1])
+            safe_sums = np.where(row_sums > 0, row_sums, 1.0)
+            p_matrix = np.where(row_sums > 0, p_matrix / safe_sums, 1.0 / p_matrix.shape[1])
             
             # Normalize to guarantee sum is exactly 1 for all rows
             row_sums_norm = p_matrix.sum(axis=1, keepdims=True)
