@@ -119,7 +119,7 @@ def train_and_estimate(
     })
 
     if n_triggered > 0:
-        logger.info(f"Running Nugundam EM Calibration selectively on {n_triggered}/{len(initial_pdfs)} candidate sources (Blends: {int(np.sum(is_blend))}, PCA Volume: {int(np.sum(is_pca_outlier_vol))})...")
+        logger.info(f"Running Nugundam EM Calibration selectively on {n_triggered}/{len(initial_pdfs)} candidate sources (PCA Volume Outliers: {int(np.sum(is_pca_outlier_vol))})...")
         em_max_iter = 2 if is_ci else 5
         pso_params = committee.model_dict.get("pso_params", {})
         em_params = pso_params.get("em", {})
@@ -227,7 +227,7 @@ def estimate_only(
     })
 
     if n_triggered > 0:
-        logger.info(f"Running Nugundam EM Calibration selectively on {n_triggered}/{len(initial_pdfs)} candidate sources (Blends: {int(np.sum(is_blend))}, PCA Volume: {int(np.sum(is_pca_outlier_vol))})...")
+        logger.info(f"Running Nugundam EM Calibration selectively on {n_triggered}/{len(initial_pdfs)} candidate sources (PCA Volume Outliers: {int(np.sum(is_pca_outlier_vol))})...")
         n_test = len(test_dict[list(test_dict.keys())[0]])
         is_ci = (n_test < 1500) or ("PZDC_CI_MAX_TRAIN" in os.environ)
         em_max_iter = 2 if is_ci else 5
