@@ -52,8 +52,13 @@ def sanitize_input_catalog(
                 sanitized[col_name] = arr
                 continue
                 
-        # Skip boolean or object ID columns from feature limits
-        if col_name in ["object_id", "id", "ID", "objectId"] or np.issubdtype(arr.dtype, np.bool_) or np.issubdtype(arr.dtype, np.integer):
+        # Skip boolean, ID, coordinate, and target redshift columns from feature limits and imputation
+        SKIP_COLS = {
+            "object_id", "id", "ID", "objectId",
+            "redshift", "redshift_manyband", "ztrue", "z_true", "zspec", "z_spec", "z", "Z",
+            "ra", "dec", "RA", "DEC", "coord_ra", "coord_dec"
+        }
+        if col_name in SKIP_COLS or np.issubdtype(arr.dtype, np.bool_) or np.issubdtype(arr.dtype, np.integer):
             sanitized[col_name] = arr
             continue
 

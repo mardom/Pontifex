@@ -53,11 +53,7 @@ def train_and_estimate(
     train_dict = aion_pz.load_catalog(train_file)
     test_dict = aion_pz.load_catalog(test_file)
 
-    # Sanitize and protect input catalogs from NaNs, Infs, and unphysical features
-    train_dict, _ = sanitize_input_catalog(train_dict, raise_warnings=True)
-    test_dict, _ = sanitize_input_catalog(test_dict, raise_warnings=True)
-
-    # Resolve true redshifts
+    # 1. Resolve true ground-truth redshifts prior to feature sanitization
     z_true = np.asarray(train_dict[aion_pz.REDSHIFT_COL], dtype="float64")
     if aion_pz.MANYBAND_COL in train_dict:
         z_many = np.asarray(train_dict[aion_pz.MANYBAND_COL], dtype="float64")
@@ -66,6 +62,10 @@ def train_and_estimate(
     good = np.isfinite(z_true)
     train_dict = {k: v[good] for k, v in train_dict.items()}
     train_dict['redshift'] = z_true[good]
+
+    # 2. Sanitize and protect input catalogs from NaNs, Infs, and unphysical features
+    train_dict, _ = sanitize_input_catalog(train_dict, raise_warnings=True)
+    test_dict, _ = sanitize_input_catalog(test_dict, raise_warnings=True)
 
     bands, ref_band, is_roman = get_bands_and_ref(list(train_dict.keys()))
 

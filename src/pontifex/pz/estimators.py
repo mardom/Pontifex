@@ -1096,6 +1096,14 @@ class CommitteeOfExperts:
                 "RAIL (rail-base, rail-estimation) is required to train CommitteeOfExperts. "
                 "Please install RAIL in your environment."
             )
+        if 'redshift' in train_dict and 'redshift_manyband' in train_dict:
+            z_spec = np.asarray(train_dict['redshift'], dtype='float64')
+            z_mb = np.asarray(train_dict['redshift_manyband'], dtype='float64')
+            z_true = np.where(np.isfinite(z_spec), z_spec, z_mb)
+            good = np.isfinite(z_true)
+            train_dict = {k: np.asarray(v)[good] for k, v in train_dict.items()}
+            train_dict['redshift'] = z_true[good]
+
         train_dict, _ = sanitize_input_catalog(train_dict, raise_warnings=True)
         n_train = len(train_dict['redshift'])
         is_ci = self.is_ci or (n_train < 1500)
