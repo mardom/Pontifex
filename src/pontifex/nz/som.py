@@ -49,10 +49,16 @@ def compute_som_density_weights(
         logger.warning("MiniSom not installed. Falling back to uniform sample weights.")
         return np.ones(len(X_ddf), dtype=np.float32)
 
-    # Use first 6 magnitude columns (or min dimension) for SOM spatial manifold
-    n_dim = min(6, X_ddf.shape[1])
-    feat_ddf = X_ddf[:, :n_dim].astype(np.float64)
-    feat_wfd = X_wfd[:, :n_dim].astype(np.float64)
+    # Use genuine magnitude columns (stride of 3 in feature matrix: mag, mask, flux)
+    mag_indices = [3 * i for i in range(min(6, X_ddf.shape[1] // 3))]
+    if len(mag_indices) >= 3:
+        feat_ddf = X_ddf[:, mag_indices].astype(np.float64)
+        feat_wfd = X_wfd[:, mag_indices].astype(np.float64)
+        n_dim = len(mag_indices)
+    else:
+        n_dim = min(6, X_ddf.shape[1])
+        feat_ddf = X_ddf[:, :n_dim].astype(np.float64)
+        feat_wfd = X_wfd[:, :n_dim].astype(np.float64)
 
     # Normalize across joint dataset
     all_feat = np.vstack([feat_ddf, feat_wfd[: min(50000, len(feat_wfd))]])

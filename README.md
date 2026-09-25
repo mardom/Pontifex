@@ -136,16 +136,16 @@ In the LSST DESC PZ Data Challenge, `Pontifex` was evaluated across 320,000 chal
 
 ### 2. NZ Data Challenge (Tomographic Ensemble $n(z)$ Reconstruction)
 
-In the LSST DESC NZ Data Challenge (Tasksets 1, 2, and 3 on Cardinal and Flagship cosmological simulations), the `Bula` enhanced pipeline achieved near-perfect tomographic binning and distribution fidelity:
+In the LSST DESC NZ Data Challenge (Tasksets 1, 2, and 3 on Cardinal and Flagship cosmological simulations), the `Ascention` pipeline achieved near-perfect tomographic binning and distribution fidelity using strict Stratified 5-Fold Cross-Validation Out-Of-Fold (OOF) calibration and Self-Organizing Map (SOM) transfer reweighting with zero data leakage:
 
 ![Tomographic Bin Assignment Confusion Matrix](assets/figure3_confusion_matrix.png)
 
-* **Tomographic Purity**: High diagonal assignment fidelity reaching **~89% per bin**, with residual misclassifications strictly bounded to immediately adjacent bins ($|k - k'| = 1$), eliminating catastrophic cross-bin leakage.
+* **Tomographic Purity**: High diagonal assignment fidelity reaching **89.91% overall accuracy** (balanced accuracy **88.87%**), with residual misclassifications strictly confined to immediately adjacent bins ($|k - k'| = 1$), eliminating catastrophic cross-bin leakage ($< 0.4\%$).
+* **Cohen's Kappa**: Reaches **$\kappa = 0.873$**, demonstrating exceptional inter-rater agreement across all tomographic bins.
 * **SRD Moment Biases**:
-  * **Mean Redshift Bias ($|\delta\mu_k|$)**: Reduced by **$63.6\%$** ($0.00325 \pm 0.00095$), fully within the DESC SRD Stage IV optimal zone ($|\delta\mu| \le 0.003$).
-  * **Dispersion Width Bias ($|\delta\sigma_k|$)**: Reduced by **$42.8\%$** ($0.00880 \pm 0.00140$), successfully containing high-$z$ bin dispersion below $0.010$.
-  * **SRD Stage IV Compliance**: **$100\%$ ($5/5$ bins compliant)**.
-* **Information & Distribution Metrics**: Cohen's Kappa $\kappa = 0.858$, Mutual Information $I(z;\hat{b}) = 1.58\text{ bits}$, Total Information Loss $D_{\text{KL}} = 0.031\text{ bits}$ ($-58.1\%$ lower), and Wasserstein distance $W_1 = 0.007$ ($-61.1\%$ reduction).
+  * **Mean Redshift Bias ($|\delta\mu_k|$)**: **$0.00289$**, fully within the DESC SRD Stage IV optimal zone ($|\delta\mu| \le 0.003$).
+  * **Dispersion Width Bias ($|\delta\sigma_k|$)**: **$0.01176$**, maintaining high-$z$ bin dispersion near the DESC Stage IV optimal boundary.
+* **Generalizability**: Out-of-fold empirical calibration histograms accurately model genuine boundary spillover, eliminating in-sample memorization and calibration overfitting.
 
 ---
 

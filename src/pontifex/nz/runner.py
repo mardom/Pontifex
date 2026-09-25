@@ -77,15 +77,38 @@ def train_and_calibrate(
         except Exception:
             sample_weights = None
 
-    clf = train_tomographic_classifier(X, y_true, sample_weights=sample_weights)
+    # 1. Stratified 5-Fold Cross-Validation for Out-Of-Fold (OOF) Calibration
+    from sklearn.model_selection import StratifiedKFold
+    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    y_pred_oof = np.zeros(len(y_true), dtype=int)
 
-    y_pred_train = np.argmax(clf.predict_proba(X), axis=1)
+    for fold, (train_idx, val_idx) in enumerate(skf.split(X, y_true)):
+        sw_fold = sample_weights[train_idx] if sample_weights is not None else None
+        clf_fold = train_tomographic_classifier(
+            X[train_idx],
+            y_true[train_idx],
+            sample_weights=sw_fold,
+            random_state=42 + fold,
+        )
+        probs_val = clf_fold.predict_proba(X[val_idx])
+        y_pred_oof[val_idx] = np.argmax(probs_val, axis=1)
+
+    # 2. Build empirical calibration histograms from OUT-OF-FOLD predictions
+    # This prevents in-sample calibration overfitting and preserves realistic dispersion
     calib_hists = build_calibration_histograms(
         z_true=z_clean,
-        y_pred=y_pred_train,
+        y_pred=y_pred_oof,
         n_tomo_bins=n_tomo_bins,
         grid_edges=grid_edges,
         sample_weights=sample_weights,
+    )
+
+    # 3. Train final production classifier on all training data
+    clf = train_tomographic_classifier(
+        X,
+        y_true,
+        sample_weights=sample_weights,
+        random_state=42,
     )
 
     os.makedirs(models_dir, exist_ok=True)
