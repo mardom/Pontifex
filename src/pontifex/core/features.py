@@ -24,9 +24,10 @@ def flux_to_mag(flux: np.ndarray, zero_pt: float = 31.4, floor: float = 1e-5) ->
 
 
 def extract_features(data_dict: Dict[str, np.ndarray]) -> np.ndarray:
-    """Extract magnitudes, errors, Pogson fluxes, and color indices from catalog dictionary.
+    """Extract magnitudes, errors, Pogson fluxes, adjacent and wide-baseline colors.
     
     Automatically handles LSST bands (u, g, r, i, z, y) and optional Roman bands (Y, J, H).
+    Extracts 49 features for LSST+Roman (or 44 for LSST only), matching Ascention challenge models.
     """
     lsst_bands = [f"mag_{b}_lsst" for b in LSST_BANDS]
     roman_bands = [f"mag_{b}_roman" for b in ROMAN_BANDS]
@@ -37,34 +38,58 @@ def extract_features(data_dict: Dict[str, np.ndarray]) -> np.ndarray:
     # 1. Magnitudes and NaN indicator masks
     for col in all_mag_cols:
         m = np.asarray(data_dict[col], dtype=np.float32).copy()
-        nan_mask = np.isnan(m) | (m > 90.0)
-        m[nan_mask] = 30.0  # Safe non-detection replacement
+        nan_mask = np.isnan(m)
+        m[nan_mask] = 99.0
         features.append(m)
         features.append(nan_mask.astype(np.float32))
         
-        # Linear Pogson flux
-        f = mag_to_flux(m)
+    # 2. Linear Pogson fluxes
+    for col in all_mag_cols:
+        m = np.asarray(data_dict[col], dtype=np.float32).copy()
+        f = np.where(np.isnan(m), 0.0, 10.0 ** (-0.4 * (m - 24.0)))
         features.append(f)
         
-    # 2. Measurement Errors
+    # 3. Measurement Errors
     for col in all_mag_cols:
         err_col = f"{col}_err"
         if err_col in data_dict:
             err = np.asarray(data_dict[err_col], dtype=np.float32).copy()
-            err_mask = np.isnan(err) | (err <= 0)
-            err[err_mask] = 1.0
+            err = np.where(np.isnan(err), 99.0, err)
             features.append(err)
             
-    # 3. Consecutive and Cross-Survey Colors
+    # 4. Adjacent band colors
     for i in range(len(all_mag_cols) - 1):
-        col1 = all_mag_cols[i]
-        col2 = all_mag_cols[i + 1]
-        m1 = np.asarray(data_dict[col1], dtype=np.float32).copy()
-        m2 = np.asarray(data_dict[col2], dtype=np.float32).copy()
-        m1[np.isnan(m1) | (m1 > 90.0)] = 30.0
-        m2[np.isnan(m2) | (m2 > 90.0)] = 30.0
-        color = m1 - m2
-        features.append(color)
+        b1, b2 = all_mag_cols[i], all_mag_cols[i + 1]
+        m1 = np.where(np.isnan(data_dict[b1]), 99.0, data_dict[b1])
+        m2 = np.where(np.isnan(data_dict[b2]), 99.0, data_dict[b2])
+        features.append(m1 - m2)
+
+    # 5. Wide-baseline colors (essential for photometric breaks & tomographic classification)
+    if "mag_u_lsst" in data_dict and "mag_r_lsst" in data_dict:
+        features.append(
+            np.where(np.isnan(data_dict["mag_u_lsst"]), 99.0, data_dict["mag_u_lsst"])
+            - np.where(np.isnan(data_dict["mag_r_lsst"]), 99.0, data_dict["mag_r_lsst"])
+        )
+    if "mag_g_lsst" in data_dict and "mag_i_lsst" in data_dict:
+        features.append(
+            np.where(np.isnan(data_dict["mag_g_lsst"]), 99.0, data_dict["mag_g_lsst"])
+            - np.where(np.isnan(data_dict["mag_i_lsst"]), 99.0, data_dict["mag_i_lsst"])
+        )
+    if "mag_r_lsst" in data_dict and "mag_z_lsst" in data_dict:
+        features.append(
+            np.where(np.isnan(data_dict["mag_r_lsst"]), 99.0, data_dict["mag_r_lsst"])
+            - np.where(np.isnan(data_dict["mag_z_lsst"]), 99.0, data_dict["mag_z_lsst"])
+        )
+    if "mag_i_lsst" in data_dict and "mag_y_lsst" in data_dict:
+        features.append(
+            np.where(np.isnan(data_dict["mag_i_lsst"]), 99.0, data_dict["mag_i_lsst"])
+            - np.where(np.isnan(data_dict["mag_y_lsst"]), 99.0, data_dict["mag_y_lsst"])
+        )
+    if "mag_z_lsst" in data_dict and "mag_H_roman" in data_dict:
+        features.append(
+            np.where(np.isnan(data_dict["mag_z_lsst"]), 99.0, data_dict["mag_z_lsst"])
+            - np.where(np.isnan(data_dict["mag_H_roman"]), 99.0, data_dict["mag_H_roman"])
+        )
         
     return np.column_stack(features)
 

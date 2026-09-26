@@ -79,3 +79,31 @@ def test_spatial_sampler_and_qp():
     assert ens is not None
     assert len(ens) == n_tomo_bins * n_realizations
 
+
+def test_extract_features_wide_baseline_and_ascention_parity():
+    from pontifex.core.features import extract_features
+    n_obj = 20
+    dummy = {
+        "mag_u_lsst": np.full(n_obj, 24.0, dtype=np.float32),
+        "mag_g_lsst": np.full(n_obj, 23.0, dtype=np.float32),
+        "mag_r_lsst": np.full(n_obj, 22.0, dtype=np.float32),
+        "mag_i_lsst": np.full(n_obj, 21.5, dtype=np.float32),
+        "mag_z_lsst": np.full(n_obj, 21.0, dtype=np.float32),
+        "mag_y_lsst": np.full(n_obj, 20.8, dtype=np.float32),
+        "mag_Y_roman": np.full(n_obj, 20.5, dtype=np.float32),
+        "mag_J_roman": np.full(n_obj, 20.2, dtype=np.float32),
+        "mag_H_roman": np.full(n_obj, 20.0, dtype=np.float32),
+        "mag_u_lsst_err": np.full(n_obj, 0.1, dtype=np.float32),
+        "mag_g_lsst_err": np.full(n_obj, 0.05, dtype=np.float32),
+        "mag_r_lsst_err": np.full(n_obj, 0.05, dtype=np.float32),
+        "mag_i_lsst_err": np.full(n_obj, 0.05, dtype=np.float32),
+        "mag_z_lsst_err": np.full(n_obj, 0.05, dtype=np.float32),
+        "mag_y_lsst_err": np.full(n_obj, 0.05, dtype=np.float32),
+        "mag_Y_roman_err": np.full(n_obj, 0.05, dtype=np.float32),
+        "mag_J_roman_err": np.full(n_obj, 0.05, dtype=np.float32),
+        "mag_H_roman_err": np.full(n_obj, 0.05, dtype=np.float32),
+    }
+    feats = extract_features(dummy)
+    assert feats.shape == (n_obj, 49)
+
+

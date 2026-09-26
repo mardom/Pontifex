@@ -3,7 +3,7 @@
 Welcome to Pontifex's Documentation!
 ====================================
 
-**Pontifex** (v2.0.0) is a unified, high-performance photometric redshift and tomographic distribution reconstruction framework engineered for Vera C. Rubin Observatory Legacy Survey of Space and Time (LSST) and the Nancy Grace Roman Space Telescope.
+**Pontifex** (v2.1.0 - Ascention) is a unified, high-performance photometric redshift and tomographic distribution reconstruction framework engineered for Vera C. Rubin Observatory Legacy Survey of Space and Time (LSST) and the Nancy Grace Roman Space Telescope.
 
 Core Capabilities
 -----------------
@@ -11,7 +11,7 @@ Core Capabilities
 * **Dual-Challenge Architecture**:
   
   * **``pontifex.pz``**: Individual galaxy photo-z probability density function (PDF) estimation using a Committee of Diverse Experts (Deep MLPs, MiniSom, PZFlow Normalizing Flows, GPz, FlexZBoost, BPZ-lite, LePhare) coupled with Expectation-Maximization footprint gating (Nugundam + SkyKatana).
-  * **``pontifex.nz``**: Tomographic ensemble distribution $n(z)$ reconstruction featuring Self-Organizing Map density ratio transfer reweighting (DIR), XGBoost classification with boundary entropy regularization, and correlated Gaussian Process spatial realizations ($\ell_z = 0.15$).
+  * **``pontifex.nz``**: Tomographic ensemble distribution :math:`n(z)` reconstruction featuring Self-Organizing Map density ratio transfer reweighting (DIR), XGBoost classification with boundary entropy regularization, and correlated Gaussian Process spatial realizations (:math:`\ell_z = 0.15`).
 
 * **Resilient Infrastructure (``pontifex.core``)**:
   

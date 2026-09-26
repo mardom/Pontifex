@@ -22,10 +22,9 @@ wheels/
 docs/_build/
 .pytest_cache/
 .vincent/
-results/moe_predictions/
-results/*.hdf5
-results/*.pkl
+results/
 output_estimate_*.hdf5
 
 report/
 reports/
+.vscode/

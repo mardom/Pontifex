@@ -14,7 +14,7 @@ sys.modules['rail.core'] = None
 sys.modules['lephare'] = None
 sys.modules['aion_pz'] = None
 import pontifex
-assert pontifex.__version__ == '2.0.1'
+assert pontifex.__version__ == '2.1.0'
 assert pontifex.HAS_RAIL is False
 from pontifex import CommitteeOfExperts, PontifexEM, extract_features
 assert callable(CommitteeOfExperts)
