@@ -1,7 +1,7 @@
 import os
 import logging
 from pathlib import Path
-from typing import Union
+from typing import Union, Optional, Dict, Any
 import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
@@ -34,6 +34,8 @@ def train_and_estimate(
     save_model_to: Union[str, Path, None] = None,
     seed: int = 42,
     optimize_hyperparams: bool = False,
+    aion_head: Optional[Dict[str, Any]] = None,
+    aion_features: Optional[str] = None,
 ) -> None:
     """
     Train the committee of experts, perform footprint-corrected EM calibration
@@ -76,7 +78,15 @@ def train_and_estimate(
     # 1. Fit committee of experts
     logger.info("Fitting Committee of Experts...")
     committee = CommitteeOfExperts(is_ci=is_ci)
-    committee.fit(train_dict, bands, ref_band, is_roman, optimize_hyperparams=optimize_hyperparams)
+    committee.fit(
+        train_dict,
+        bands,
+        ref_band,
+        is_roman,
+        optimize_hyperparams=optimize_hyperparams,
+        aion_head=aion_head,
+        aion_features=aion_features,
+    )
 
     # 2. Predict initial PDFs on Z_CENTERS
     logger.info("Predicting initial PDFs...")
