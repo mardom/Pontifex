@@ -2,7 +2,7 @@ import sys
 import os
 import math
 import logging
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 import numpy as np
 import joblib
 from scipy.ndimage import gaussian_filter1d
@@ -806,16 +806,19 @@ class CommitteeOfExperts:
         # 5. Optimize AION
         logging.getLogger("pontifex").info("Optimizing AION...")
         try:
-            aion_device = os.environ.get("AION_PZ_DEVICE", "cpu")
-            aion_model, codec_manager, device = aion_pz.load_aion(device=aion_device)
-            x_train_aion = aion_pz.build_design_matrix(aion_model, codec_manager, sub_train_dict, device)
-            x_val_aion = aion_pz.build_design_matrix(aion_model, codec_manager, sub_val_dict, device)
+            features_mode = os.environ.get("PONTIFEX_AION_FEATURES", "photo")
+            if features_mode == "photo":
+                aion_model = codec_manager = device = None
+            else:
+                aion_device = os.environ.get("AION_PZ_DEVICE", "cpu")
+                aion_model, codec_manager, device = aion_pz.load_aion(device=aion_device)
+            x_train_aion = aion_pz.build_design_matrix(aion_model, codec_manager, sub_train_dict, device, features=features_mode)
+            x_val_aion = aion_pz.build_design_matrix(aion_model, codec_manager, sub_val_dict, device, features=features_mode)
             
             def aion_objective(alpha, learning_rate_init):
                 try:
                     scaler = StandardScaler().fit(x_train_aion)
                     xs_fit = scaler.transform(x_train_aion)
-                    xs_val = scaler.transform(x_val_aion)
                     labels_fit = aion_pz._z_to_bin(sub_train_dict['redshift'])
                     
                     clf = MLPClassifier(
@@ -826,11 +829,14 @@ class CommitteeOfExperts:
                         max_iter=max_iter_aion,
                         early_stopping=True,
                         n_iter_no_change=8,
+                        random_state=42,
                     )
                     clf.fit(xs_fit, labels_fit)
                     
-                    aion_head = {"scaler": scaler, "clf": clf, "z_grid": Z_GRID, "classes_": clf.classes_}
-                    pdfs = aion_pz.predict_pz(aion_head, x_val_aion)
+                    aion_head = {"scaler": scaler, "clf": clf, "z_grid": Z_GRID, "classes_": clf.classes_, "features": features_mode}
+                    pz_val_raw = aion_pz.predict_pz(aion_head, x_val_aion)
+                    aion_head["recal"] = aion_pz.fit_pit_recalibration(pz_val_raw, Z_GRID, sub_val_dict['redshift'])
+                    pdfs = aion_pz._predict_calibrated(aion_head, x_val_aion)
                     pdfs = 0.5 * (pdfs[:, :-1] + pdfs[:, 1:])
                     pdfs = clean_pdf(pdfs)
                     return compute_metrics(pdfs, z_val)
@@ -968,7 +974,6 @@ class CommitteeOfExperts:
             # AION
             scaler = StandardScaler().fit(x_train_aion)
             xs_fit = scaler.transform(x_train_aion)
-            xs_val = scaler.transform(x_val_aion)
             labels_fit = aion_pz._z_to_bin(sub_train_dict['redshift'])
             clf = MLPClassifier(
                 hidden_layer_sizes=(128, 64) if self.is_ci else (512, 256),
@@ -978,11 +983,14 @@ class CommitteeOfExperts:
                 max_iter=max_iter_aion,
                 early_stopping=True,
                 n_iter_no_change=8,
+                random_state=42,
             )
             clf.fit(xs_fit, labels_fit)
-            aion_head = {"scaler": scaler, "clf": clf, "z_grid": Z_GRID, "classes_": clf.classes_}
-            pdf_aion_val = clean_pdf(0.5 * (aion_pz.predict_pz(aion_head, x_val_aion)[:, :-1] + aion_pz.predict_pz(aion_head, x_val_aion)[:, 1:]))
-            pdf_aion_train = clean_pdf(0.5 * (aion_pz.predict_pz(aion_head, x_train_aion)[:, :-1] + aion_pz.predict_pz(aion_head, x_train_aion)[:, 1:]))
+            aion_head = {"scaler": scaler, "clf": clf, "z_grid": Z_GRID, "classes_": clf.classes_, "features": features_mode}
+            pz_val_raw = aion_pz.predict_pz(aion_head, x_val_aion)
+            aion_head["recal"] = aion_pz.fit_pit_recalibration(pz_val_raw, Z_GRID, sub_val_dict['redshift'])
+            pdf_aion_val = clean_pdf(0.5 * (aion_pz._predict_calibrated(aion_head, x_val_aion)[:, :-1] + aion_pz._predict_calibrated(aion_head, x_val_aion)[:, 1:]))
+            pdf_aion_train = clean_pdf(0.5 * (aion_pz._predict_calibrated(aion_head, x_train_aion)[:, :-1] + aion_pz._predict_calibrated(aion_head, x_train_aion)[:, 1:]))
 
             # GPz
             gpz_inf = make_clean_stage(
@@ -1090,7 +1098,16 @@ class CommitteeOfExperts:
         logging.getLogger("pontifex").info("PSO Hyperparameter Optimization completed and saved to results/pso_best_hyperparameters.pkl!")
         return results
 
-    def fit(self, train_dict: Dict[str, np.ndarray], bands: List[str], ref_band: str, is_roman: bool, optimize_hyperparams: bool = False) -> Dict[str, Any]:
+    def fit(
+        self,
+        train_dict: Dict[str, np.ndarray],
+        bands: List[str],
+        ref_band: str,
+        is_roman: bool,
+        optimize_hyperparams: bool = False,
+        aion_head: Optional[Dict[str, Any]] = None,
+        aion_features: Optional[str] = None,
+    ) -> Dict[str, Any]:
         if not HAS_RAIL:
             raise ImportError(
                 "RAIL (rail-base, rail-estimation) is required to train CommitteeOfExperts. "
@@ -1303,28 +1320,60 @@ class CommitteeOfExperts:
         )
         pdf_fzboost_train = estimator_fzboost.estimate(train_handle).data.pdf(Z_CENTERS)
 
-        # 7. Train AION
-        aion_device = os.environ.get("AION_PZ_DEVICE")
-        aion_model, codec_manager, device = aion_pz.load_aion(device=aion_device)
-        x_train_aion = aion_pz.build_design_matrix(aion_model, codec_manager, train_dict, device)
-        
-        scaler = StandardScaler().fit(x_train_aion)
-        xs_fit = scaler.transform(x_train_aion)
-        labels_fit = aion_pz._z_to_bin(train_dict['redshift'])
-        
-        clf = MLPClassifier(
-            hidden_layer_sizes=(128, 64) if is_ci else (512, 256),
-            alpha=aion_alpha,
-            batch_size=256,
-            learning_rate_init=aion_lr,
-            max_iter=max_iter_nn,
-            early_stopping=True,
-            n_iter_no_change=8,
-        )
-        clf.fit(xs_fit, labels_fit)
-        
-        aion_head = {"scaler": scaler, "clf": clf, "z_grid": Z_GRID, "classes_": clf.classes_}
-        pdf_aion_train = aion_pz.predict_pz(aion_head, x_train_aion)
+        # 7. Train AION (AION+ with holdout PIT recalibration)
+        features_mode = aion_features or getattr(self, "aion_features", os.environ.get("PONTIFEX_AION_FEATURES", "photo"))
+        if aion_head is not None:
+            logging.getLogger("pontifex").info("Using provided AION head.")
+        else:
+            if features_mode == "photo":
+                aion_model = codec_manager = device = None
+            else:
+                aion_device = os.environ.get("AION_PZ_DEVICE", "cpu")
+                aion_model, codec_manager, device = aion_pz.load_aion(device=aion_device)
+
+            n_tr = len(train_dict['redshift'])
+            if n_tr > 100:
+                n_cal = max(1, int(0.1 * n_tr))
+                perm = np.random.default_rng(42).permutation(n_tr)
+                fit_idx, cal_idx = perm[n_cal:], perm[:n_cal]
+            else:
+                fit_idx, cal_idx = np.arange(n_tr), np.array([], dtype=int)
+
+            train_fit_dict = {k: v[fit_idx] for k, v in train_dict.items()}
+            x_fit_aion = aion_pz.build_design_matrix(aion_model, codec_manager, train_fit_dict, device, features=features_mode)
+            z_fit = train_dict['redshift'][fit_idx]
+            
+            scaler = StandardScaler().fit(x_fit_aion)
+            xs_fit = scaler.transform(x_fit_aion)
+            labels_fit = aion_pz._z_to_bin(z_fit)
+
+            clf = MLPClassifier(
+                hidden_layer_sizes=(128, 64) if is_ci else (512, 256),
+                alpha=aion_alpha,
+                batch_size=256,
+                learning_rate_init=aion_lr,
+                max_iter=max_iter_nn,
+                early_stopping=True,
+                n_iter_no_change=8,
+                random_state=42,
+            )
+            clf.fit(xs_fit, labels_fit)
+            aion_head = {"scaler": scaler, "clf": clf, "z_grid": Z_GRID, "classes_": clf.classes_, "features": features_mode}
+
+            if len(cal_idx) > 0:
+                train_cal_dict = {k: v[cal_idx] for k, v in train_dict.items()}
+                x_cal_aion = aion_pz.build_design_matrix(aion_model, codec_manager, train_cal_dict, device, features=features_mode)
+                pz_cal = aion_pz.predict_pz(aion_head, x_cal_aion)
+                aion_head["recal"] = aion_pz.fit_pit_recalibration(pz_cal, Z_GRID, train_dict['redshift'][cal_idx])
+
+        features_mode = aion_head.get("features", features_mode)
+        if features_mode == "photo":
+            aion_model = codec_manager = device = None
+        else:
+            aion_device = os.environ.get("AION_PZ_DEVICE", "cpu")
+            aion_model, codec_manager, device = aion_pz.load_aion(device=aion_device)
+        x_train_aion = aion_pz.build_design_matrix(aion_model, codec_manager, train_dict, device, features=features_mode)
+        pdf_aion_train = aion_pz._predict_calibrated(aion_head, x_train_aion)
         pdf_aion_train = 0.5 * (pdf_aion_train[:, :-1] + pdf_aion_train[:, 1:])
 
         # 7.5 Train LePhare conditionally (only if not is_roman and not is_ci)
@@ -1593,12 +1642,21 @@ class CommitteeOfExperts:
         )
         pdf_fzboost = estimator_fzboost.estimate(test_handle).data.pdf(Z_CENTERS)
 
-        # 7. AION
-        aion_device = os.environ.get("AION_PZ_DEVICE")
-        aion_model, codec_manager, device = aion_pz.load_aion(device=aion_device)
-        x_test_aion = aion_pz.build_design_matrix(aion_model, codec_manager, test_dict, device)
-        pdf_aion = aion_pz.predict_pz(model_dict["aion_head"], x_test_aion)
-        pdf_aion = 0.5 * (pdf_aion[:, :-1] + pdf_aion[:, 1:])
+        # 7. AION (AION+ calibrated expert)
+        aion_head = model_dict.get("aion_head")
+        if aion_head is not None and aion_pz is not None:
+            features_mode = aion_head.get("features", os.environ.get("PONTIFEX_AION_FEATURES", "photo"))
+            if features_mode == "photo":
+                aion_model = codec_manager = device = None
+            else:
+                aion_device = os.environ.get("AION_PZ_DEVICE", "cpu")
+                aion_model, codec_manager, device = aion_pz.load_aion(device=aion_device)
+            x_test_aion = aion_pz.build_design_matrix(aion_model, codec_manager, test_dict, device, features=features_mode)
+            pdf_aion = aion_pz._predict_calibrated(aion_head, x_test_aion)
+            pdf_aion = 0.5 * (pdf_aion[:, :-1] + pdf_aion[:, 1:])
+        else:
+            n_test = len(test_dict[list(test_dict.keys())[0]])
+            pdf_aion = np.full((n_test, NZ - 1), 1.0 / (NZ - 1))
 
         # 7.6 PZFlow
         pzflow_model = model_dict.get("model_pzflow")
