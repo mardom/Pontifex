@@ -19,6 +19,11 @@ Core Capabilities
   * Continuous Pogson flux transformations with noise-floor clipping.
   * Native calculation of DESC Science Requirements Document (SRD) Stage IV tomographic moment biases (:math:`\delta\mu`, :math:`\delta\sigma`).
 
+* **Validated on Simulated & Observational Benchmarks**:
+
+  * Achieves **96.4% (324 / 336)** on the official SLAC rubric across all 16 LSST-DESC PZ Data Challenge regimes and **90.05% tomographic accuracy** (:math:`\text{RMS } |\delta\mu_k| \le 0.003`) in the NZ Data Challenge.
+  * Outperforms 30+-band **COSMOS2020 Classic LePHARE** in outlier rate (:math:`\eta_{>0.15} = 2.22\%` vs. :math:`2.29\%`), median bias (:math:`+0.00040` vs. :math:`-0.00253`), and RMSE (:math:`0.1043` vs. :math:`0.1219`) on :math:`N = 30,198` cross-matched COSMOS galaxies (:math:`0.0 \le z_{\text{spec}} \le 1.3`) using only **6 optical broadband filters (`ugrizy`)** (see :doc:`tutorial`).
+
 .. toctree::
    :maxdepth: 2
    :caption: User Guide & Architecture:

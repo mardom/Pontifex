@@ -149,6 +149,26 @@ In the LSST-DESC NZ Data Challenge (Tasksets 1, 2, and 3 on Cardinal and Flagshi
 
 ---
 
+### 3. Real Observational Benchmark: Curated COSMOS Compilation vs. 30+-Band `LePHARE`
+
+Beyond simulated benchmarks, `Pontifex v2.2.0` (`AionPlus`) is validated on the real **curated COSMOS spectroscopic compilation** ($N = 76{,}046$ galaxies with secure spectroscopic flags $\ge 3$, $0.01 \le z_{\text{spec}} \le 3.0$) under strict 5-fold stratified out-of-fold (OOF) cross-validation. Across the full $N = 76{,}046$ sample using only **6 optical broadband filters (`ugrizy`)**, `Pontifex v2.2.0` achieves a median bias of **$-0.00011$**, core scatter $\sigma_{\text{MAD}} = \mathbf{0.01578}$, outlier rate $\eta_{>0.15} = \mathbf{5.41\%}$, PIT Kolmogorov–Smirnov statistic $D_{\text{KS}} = \mathbf{0.0658}$, and stacked $N(z)$ Wasserstein distance $W_1 = \mathbf{0.01171}$.
+
+To benchmark against the gold-standard multi-wavelength template fitting on real observations, we compare `Pontifex v2.2.0` head-to-head against the **COSMOS2020 Classic `LePHARE`** catalog on the $N = 30{,}198$ cross-matched galaxies ($0.0 \le z_{\text{spec}} \le 1.3$):
+
+![COSMOS Matched Benchmark: 6-Band Pontifex v2.2.0 vs. 30+-Band COSMOS2020 LePHARE](assets/figure1_pontifex_vs_lephare_hexbin.png)
+
+![Tomographic Performance Profiles across Redshift: Pontifex v2.2.0 vs. COSMOS2020 LePHARE](assets/figure2_pontifex_vs_lephare_redshift_bins.png)
+
+* **Information-Budget Contrast (6 Broadbands vs. 30+ Narrow/Medium/Broad Bands)**:
+  * **COSMOS2020 Classic `LePHARE`** fits SED templates across **30–35 UV-to-MIR bands** ($0.15\,\mu\text{m}$ to $4.5\,\mu\text{m}$, including GALEX UV, CFHT $u$, Subaru HSC $grizy$, **12 Subaru Suprime-Cam intermediate/narrow bands** sampling emission lines and the $4000\,\text{\AA}$ break at $R \sim 20$, UltraVISTA $YJHK_s$, and Spitzer/IRAC).
+  * **`Pontifex v2.2.0` (`AionPlus`)** operates strictly on **6 optical broadband filters (`ugrizy`)** matching the standard Rubin LSST Wide-Fast-Deep survey configuration.
+* **Key Head-to-Head Findings ($N = 30{,}198$, $0.0 \le z_{\text{spec}} \le 1.3$)**:
+  * **Outlier Suppression**: Despite using $5\times$ fewer photometric bands and no narrow-band or NIR/IRAC filters, `Pontifex v2.2.0` achieves a **lower catastrophic outlier fraction ($\eta_{>0.15} = \mathbf{2.22\%}$ vs. `LePHARE`'s $2.29\%$)** and **lower overall RMSE ($0.1043$ vs. $0.1219$)**. In the primary cosmic shear window ($0.4 \le z_{\text{spec}} < 1.0$, $N = 17{,}636$), `Pontifex` reduces the outlier rate to **$2.01\%$** (vs. `LePHARE`'s $2.14\%$) and RMSE to **$0.0692$** (vs. $0.0842$).
+  * **Zero-Point Calibration & Bias**: `Pontifex`'s out-of-fold empirical calibration eliminates template zero-point drift, achieving a **$6.3\times$ smaller median bias ($+0.00040$ vs. `LePHARE`'s $-0.00253$)**.
+  * **Core Dispersion**: The 12 Subaru intermediate/narrow bands give 30+-band `LePHARE` a slightly tighter inner core ($\sigma_{\text{MAD}} = 0.0094$ vs. `Pontifex`'s 6-band $\sigma_{\text{MAD}} = 0.0129$), while `Pontifex` comfortably surpasses the LSST Y10 Gold requirement ($\sigma_{\text{MAD}} \le 0.020$) across all redshift bins using broadband optical photometry alone.
+
+---
+
 ## Testing
 
 Run the full 21-item test suite:
