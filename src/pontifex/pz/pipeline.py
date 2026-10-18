@@ -8,11 +8,15 @@ from scipy.interpolate import interp1d
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 try:
-    import aion_pz
+    from . import aion_pz
     HAS_AION = True
 except (ImportError, ModuleNotFoundError):
-    HAS_AION = False
-    aion_pz = None
+    try:
+        import aion_pz
+        HAS_AION = True
+    except (ImportError, ModuleNotFoundError):
+        HAS_AION = False
+        aion_pz = None
 
 from .estimators import (
     CommitteeOfExperts,
@@ -151,7 +155,9 @@ def train_and_estimate(
             is_ci=is_ci
         )
         calibrated_trig_pdfs = em.optimize(max_iter=em_max_iter)
-        calibrated_pdfs[is_em_triggered] = calibrated_trig_pdfs
+        dz_c = float(Z_CENTERS[1] - Z_CENTERS[0])
+        cal_trig_dens = calibrated_trig_pdfs / np.maximum(np.sum(calibrated_trig_pdfs, axis=1, keepdims=True) * dz_c, 1e-12)
+        calibrated_pdfs[is_em_triggered] = 0.85 * initial_pdfs[is_em_triggered] + 0.15 * cal_trig_dens
     else:
         logger.info("No blended or outlier sources detected above threshold. Keeping unimodal calibrated PDFs.")
 
@@ -160,9 +166,21 @@ def train_and_estimate(
     calibrated_pdfs_301 = f_interp(Z_GRID)
     calibrated_pdfs_301 = aion_pz._renorm(calibrated_pdfs_301, Z_GRID)
 
+    zmode = None
+    if hasattr(committee, "last_uncalibrated_pdfs") and committee.last_uncalibrated_pdfs is not None and hasattr(aion_pz, "compute_subgrid_zmode"):
+        uncal_em = committee.last_uncalibrated_pdfs.copy()
+        if n_triggered > 0:
+            dz_c = float(Z_CENTERS[1] - Z_CENTERS[0])
+            uncal_em[is_em_triggered] = 0.85 * uncal_em[is_em_triggered] + 0.15 * (cal_trig_dens * dz_c)
+        uncal_301 = aion_pz._renorm(
+            interp1d(Z_CENTERS, uncal_em, axis=1, kind='linear', fill_value='extrapolate')(Z_GRID),
+            Z_GRID,
+        )
+        zmode = aion_pz.compute_subgrid_zmode(uncal_301, Z_GRID)
+
     # 5. Write outputs and save model weights
     logger.info(f"Writing final calibrated PDFs to {output_file}")
-    aion_pz.write_qp(calibrated_pdfs_301, test_dict[aion_pz.OBJECT_ID_COL], output_file, z_grid=Z_GRID)
+    aion_pz.write_qp(calibrated_pdfs_301, test_dict[aion_pz.OBJECT_ID_COL], output_file, z_grid=Z_GRID, zmode=zmode)
 
     if save_model_to is not None:
         logger.info(f"Saving trained model weights to {save_model_to}")
@@ -261,7 +279,9 @@ def estimate_only(
             is_ci=is_ci
         )
         calibrated_trig_pdfs = em.optimize(max_iter=em_max_iter)
-        calibrated_pdfs[is_em_triggered] = calibrated_trig_pdfs
+        dz_c = float(Z_CENTERS[1] - Z_CENTERS[0])
+        cal_trig_dens = calibrated_trig_pdfs / np.maximum(np.sum(calibrated_trig_pdfs, axis=1, keepdims=True) * dz_c, 1e-12)
+        calibrated_pdfs[is_em_triggered] = 0.85 * initial_pdfs[is_em_triggered] + 0.15 * cal_trig_dens
     else:
         logger.info("No blended or outlier sources detected above threshold. Keeping unimodal calibrated PDFs.")
 
@@ -270,7 +290,19 @@ def estimate_only(
     calibrated_pdfs_301 = f_interp(Z_GRID)
     calibrated_pdfs_301 = aion_pz._renorm(calibrated_pdfs_301, Z_GRID)
 
+    zmode = None
+    if hasattr(committee, "last_uncalibrated_pdfs") and committee.last_uncalibrated_pdfs is not None and hasattr(aion_pz, "compute_subgrid_zmode"):
+        uncal_em = committee.last_uncalibrated_pdfs.copy()
+        if n_triggered > 0:
+            dz_c = float(Z_CENTERS[1] - Z_CENTERS[0])
+            uncal_em[is_em_triggered] = 0.85 * uncal_em[is_em_triggered] + 0.15 * (cal_trig_dens * dz_c)
+        uncal_301 = aion_pz._renorm(
+            interp1d(Z_CENTERS, uncal_em, axis=1, kind='linear', fill_value='extrapolate')(Z_GRID),
+            Z_GRID,
+        )
+        zmode = aion_pz.compute_subgrid_zmode(uncal_301, Z_GRID)
+
     # 5. Write outputs
     logger.info(f"Writing final calibrated PDFs to {output_file}")
-    aion_pz.write_qp(calibrated_pdfs_301, test_dict[aion_pz.OBJECT_ID_COL], output_file, z_grid=Z_GRID)
+    aion_pz.write_qp(calibrated_pdfs_301, test_dict[aion_pz.OBJECT_ID_COL], output_file, z_grid=Z_GRID, zmode=zmode)
 

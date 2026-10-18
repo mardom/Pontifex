@@ -75,11 +75,15 @@ except (ImportError, ModuleNotFoundError):
     lp = None
 
 try:
-    import aion_pz
+    from . import aion_pz
     HAS_AION = True
 except (ImportError, ModuleNotFoundError):
-    HAS_AION = False
-    aion_pz = None
+    try:
+        import aion_pz
+        HAS_AION = True
+    except (ImportError, ModuleNotFoundError):
+        HAS_AION = False
+        aion_pz = None
 
 try:
     from ..core.guard import sanitize_input_catalog
@@ -330,22 +334,123 @@ def make_clean_stage(stage_class: Any, name: str, **kwargs: Any) -> Any:
 
 
 def get_bands_and_ref(data_keys: List[str], taskset_id: int = None) -> Tuple[List[str], str, bool]:
-    """Determine the band list and reference band based on catalog columns and taskset designation."""
-    if taskset_id == 2:
-        return ['mag_Y_roman', 'mag_J_roman', 'mag_H_roman'], 'mag_J_roman', True
-    elif taskset_id in [1, 4]:
-        return ['mag_u_lsst', 'mag_g_lsst', 'mag_r_lsst', 'mag_i_lsst', 'mag_z_lsst', 'mag_y_lsst'], 'mag_i_lsst', False
-    
+    """Determine the band list and reference band based on available catalog columns."""
     has_roman = 'mag_Y_roman' in data_keys
     has_lsst = 'mag_i_lsst' in data_keys or 'mag_u_lsst' in data_keys
-    
+
     if has_roman and has_lsst:
-        bands = ['mag_u_lsst', 'mag_g_lsst', 'mag_r_lsst', 'mag_i_lsst', 'mag_z_lsst', 'mag_y_lsst', 'mag_Y_roman', 'mag_J_roman', 'mag_H_roman']
+        bands = [
+            'mag_u_lsst', 'mag_g_lsst', 'mag_r_lsst',
+            'mag_i_lsst', 'mag_z_lsst', 'mag_y_lsst',
+            'mag_Y_roman', 'mag_J_roman', 'mag_H_roman'
+        ]
         return bands, 'mag_i_lsst', False
     elif has_roman:
         return ['mag_Y_roman', 'mag_J_roman', 'mag_H_roman'], 'mag_J_roman', True
     else:
         return ['mag_u_lsst', 'mag_g_lsst', 'mag_r_lsst', 'mag_i_lsst', 'mag_z_lsst', 'mag_y_lsst'], 'mag_i_lsst', False
+
+
+def augment_faint_and_cmixup(
+    data: Dict[str, np.ndarray],
+    bands: List[str],
+    rng: np.random.Generator,
+    frac_faint: float = 0.6,
+    frac_mixup: float = 0.3,
+) -> Dict[str, np.ndarray]:
+    """Synthesize dimmed faint galaxies (sim_faint) and redshift-neighbor flux-space
+    mixup galaxies (C-Mixup) to bridge spectroscopic-to-photometric depth covariate shift.
+    """
+    from scipy.spatial import cKDTree
+    from ..core.guard import BAND_MAG_LIMITS
+
+    n_in = len(data["redshift"])
+    if n_in < 50:
+        return data
+    out = {k: np.asarray(v).copy() for k, v in data.items()}
+    err_bands = [f"{b}_err" if f"{b}_err" in out else b.replace("mag_", "mag_err_") for b in bands]
+
+    # 1. Faint dimming (sim_faint)
+    n_faint = int(round(n_in * frac_faint))
+    idx_faint = rng.choice(n_in, size=n_faint, replace=False)
+    offsets = rng.uniform(0.5, 2.5, size=n_faint)
+
+    faint_rows = {}
+    for k, v in out.items():
+        if k == "object_id":
+            faint_rows[k] = -np.arange(1, n_faint + 1, dtype=v.dtype)
+        else:
+            faint_rows[k] = v[idx_faint].copy()
+
+    ln10_over_2p5 = np.log(10.0) / 2.5
+    for b, eb in zip(bands, err_bands):
+        m_orig = np.asarray(out[b], dtype=np.float64)[idx_faint]
+        e_orig = np.asarray(out[eb], dtype=np.float64)[idx_faint] if eb in out else np.full(n_faint, 0.02)
+        m_lim = BAND_MAG_LIMITS.get(b, 26.5)
+
+        m_true_dim = m_orig + offsets
+        e_dim = np.sqrt(0.005**2 + (np.maximum(e_orig, 0.005) * (10.0 ** (0.35 * offsets)))**2)
+        flux_true = 10.0 ** (-0.4 * m_true_dim)
+        flux_err = flux_true * ln10_over_2p5 * np.minimum(e_dim, 2.0)
+        extra_var = np.maximum(flux_err**2 - (flux_true * ln10_over_2p5 * e_orig)**2, 0.0)
+        flux_obs = flux_true + rng.normal(0.0, 1.0, size=n_faint) * np.sqrt(extra_var)
+
+        non_det = (~np.isfinite(m_orig)) | (flux_obs <= 0) | (e_dim >= 1.0) | (m_orig >= m_lim - 0.05)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            m_obs = np.where(non_det, m_lim, -2.5 * np.log10(np.maximum(flux_obs, 1e-30)))
+        m_obs = np.clip(m_obs, 14.0, m_lim)
+        e_obs = np.where(non_det, 1.0, np.clip(e_dim, 0.005, 1.0))
+
+        faint_rows[b] = m_obs
+        if eb in faint_rows:
+            faint_rows[eb] = e_obs
+
+    parts = [out, faint_rows]
+
+    # 2. C-Mixup in flux space among redshift nearest neighbors
+    n_mix = int(round(n_in * frac_mixup))
+    if n_mix > 0 and n_in > 25:
+        anchor_idx = rng.choice(n_in, size=n_mix, replace=False)
+        z_arr = np.asarray(out["redshift"], dtype=np.float64)
+        tree = cKDTree(z_arr.reshape(-1, 1))
+        k_eff = min(20, n_in - 1)
+        _, nbrs = tree.query(z_arr[anchor_idx].reshape(-1, 1), k=k_eff + 1)
+        partner_idx = nbrs[np.arange(n_mix), rng.integers(1, k_eff + 1, size=n_mix)]
+        lam = rng.beta(0.5, 0.5, size=n_mix)
+
+        mix_rows = {}
+        for k, v in out.items():
+            if k == "object_id":
+                mix_rows[k] = -np.arange(n_faint + 1, n_faint + n_mix + 1, dtype=v.dtype)
+            elif k == "redshift":
+                mix_rows[k] = lam * z_arr[anchor_idx] + (1.0 - lam) * z_arr[partner_idx]
+            else:
+                mix_rows[k] = v[anchor_idx].copy()
+
+        for b, eb in zip(bands, err_bands):
+            m_lim = BAND_MAG_LIMITS.get(b, 26.5)
+            ma, mp = np.asarray(out[b], dtype=np.float64)[anchor_idx], np.asarray(out[b], dtype=np.float64)[partner_idx]
+            ea = np.asarray(out[eb], dtype=np.float64)[anchor_idx] if eb in out else np.full(n_mix, 0.02)
+            ep = np.asarray(out[eb], dtype=np.float64)[partner_idx] if eb in out else np.full(n_mix, 0.02)
+            fa, fp = 10.0 ** (-0.4 * ma), 10.0 ** (-0.4 * mp)
+            fout = lam * fa + (1.0 - lam) * fp
+            with np.errstate(divide="ignore", invalid="ignore"):
+                mout = -2.5 * np.log10(np.maximum(fout, 1e-30))
+            fea = fa * ln10_over_2p5 * ea
+            fep = fp * ln10_over_2p5 * ep
+            feout = np.sqrt((lam * fea)**2 + ((1.0 - lam) * fep)**2)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                eout = np.clip(feout / (fout * ln10_over_2p5), 0.005, 1.0)
+            any_nd = (ea >= 0.99) | (ep >= 0.99) | (~np.isfinite(ma)) | (~np.isfinite(mp))
+            mix_rows[b] = np.where(any_nd, m_lim, np.clip(mout, 14.0, m_lim))
+            if eb in mix_rows:
+                mix_rows[eb] = np.where(any_nd, 1.0, eout)
+        parts.append(mix_rows)
+
+    combined = {}
+    for k in out:
+        combined[k] = np.concatenate([p[k] for p in parts])
+    return combined
 
 
 def extract_features(data_dict: Dict[str, np.ndarray], bands: List[str], ref_band: str) -> np.ndarray:
@@ -445,7 +550,7 @@ def get_som_pdfs(train_dict: Dict[str, np.ndarray], test_dict: Dict[str, np.ndar
 def compute_expert_weights_knn(train_dict: Dict[str, np.ndarray], train_pdfs: List[np.ndarray],
                                z_centers: np.ndarray, bands: List[str], ref_band: str,
                                blend_gating_mode: str = 'ground_truth_informed') -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Calculate point-estimate and multi-peak errors for each expert and prepare PCA feature space for KNN weighting."""
+    """Calculate combined point-estimate and CRPS errors for each expert on held-out calibration data."""
     from sklearn.decomposition import PCA
     train_features = extract_features(train_dict, bands, ref_band)
     features_mean = np.mean(train_features, axis=0)
@@ -453,47 +558,46 @@ def compute_expert_weights_knn(train_dict: Dict[str, np.ndarray], train_pdfs: Li
     features_std = np.where(features_std == 0, 1.0, features_std)
     train_features_norm = (train_features - features_mean) / features_std
 
-    # Fit PCA to capture at least 95% of total variance dynamically across tasksets (Optunity PSO Tuned AION Latent Space Configuration)
     train_features_knn = train_features_norm
-    pca_95 = PCA(n_components=0.95, random_state=42).fit(train_features_norm)
+    n_comp = min(0.95, train_features_norm.shape[0], train_features_norm.shape[1])
+    pca_95 = PCA(n_components=n_comp, random_state=42).fit(train_features_norm)
 
-    # Taskset-specific Optunity PSO tuned default kNN hyperparameters
-    # TS1: k=17, bw=0.873 | TS2: k=17, bw=0.470 | TS3: k=35, bw=0.546 | TS4: k=29, bw=1.109
     optunity_tuned_defaults = {
-        1: {"k": 17, "bw_mult": 0.873},
-        2: {"k": 17, "bw_mult": 0.470},
-        3: {"k": 35, "bw_mult": 0.546},
-        4: {"k": 29, "bw_mult": 1.109}
+        1: {"k": 60, "bw_mult": 0.873},
+        2: {"k": 60, "bw_mult": 0.470},
+        3: {"k": 60, "bw_mult": 0.546},
+        4: {"k": 60, "bw_mult": 1.109}
     }
 
     train_errors = []
     has_z2 = "redshift_manyband" in train_dict
-    z1_true = train_dict['redshift']
-    z2_true = train_dict['redshift_manyband'] if has_z2 else None
+    z1_true = np.asarray(train_dict['redshift'], dtype=np.float64)
+    z2_true = np.asarray(train_dict['redshift_manyband'], dtype=np.float64) if has_z2 else None
+    dz_step = float(z_centers[1] - z_centers[0]) if len(z_centers) > 1 else 0.01
+    heav = (z_centers[None, :] >= z1_true[:, None]).astype(np.float64)
 
     for pdf in train_pdfs:
         z_mode = z_centers[np.argmax(pdf, axis=1)]
-        err = np.abs(z_mode - z1_true) / (1.0 + z1_true)
+        pt_err = np.abs(z_mode - z1_true) / (1.0 + z1_true)
+        cdf = np.cumsum(pdf, axis=1) * dz_step
+        cdf = np.clip(cdf / np.maximum(cdf[:, -1:], 1e-12), 0.0, 1.0)
+        crps_err = np.sum((cdf - heav) ** 2, axis=1) * dz_step / (1.0 + z1_true)
+        err = 0.5 * pt_err + 0.5 * crps_err
 
-        # Ground-truth-informed blend optimization during INFORM stage (NO leakage during inference)
-        if blend_gating_mode == 'ground_truth_informed' and has_z2:
+        if blend_gating_mode == 'ground_truth_informed' and has_z2 and z2_true is not None:
             valid_z2 = np.isfinite(z2_true) & (z2_true > 0)
             proj_blends = valid_z2 & (np.abs(z1_true - z2_true) > 0.10)
-            
-            # For true projection blends, reward experts that capture the secondary peak z2_true
             if np.sum(proj_blends) > 0:
-                # Find secondary peak in PDF for blend objects
                 for idx in np.where(proj_blends)[0]:
                     p_i = pdf[idx]
                     top2_idx = np.argsort(p_i)[-2:]
                     z_sec = z_centers[top2_idx[0]]
                     err_sec = np.abs(z_sec - z2_true[idx]) / (1.0 + z2_true[idx])
-                    # Combined multi-modal quality score for blend objects
                     err[idx] = 0.5 * err[idx] + 0.5 * min(err[idx], err_sec)
 
         train_errors.append(err)
     train_errors = np.array(train_errors)
-    
+
     pca_mean_std_pkg = {
         "mean": features_mean,
         "std": features_std,
@@ -506,63 +610,62 @@ def compute_expert_weights_knn(train_dict: Dict[str, np.ndarray], train_pdfs: Li
 
 def apply_expert_weights_knn(val_dict: Dict[str, np.ndarray], val_pdfs: List[np.ndarray],
                              train_features_norm: np.ndarray, train_errors: np.ndarray,
-                             features_mean: np.ndarray, features_std: np.ndarray,
-                             bands: List[str], ref_band: str, K: int = 30,
-                             blend_gating_mode: str = 'ground_truth_informed') -> Tuple[np.ndarray, np.ndarray]:
-    """Apply distance-based KNN weighting in full raw observed feature space during INFERENCE (Zero target leakage)."""
+                             features_mean: Any, features_std: Any,
+                             bands: List[str], ref_band: str, K: int = 60,
+                             blend_gating_mode: str = 'ground_truth_informed',
+                             is_self: bool = False) -> Tuple[np.ndarray, np.ndarray]:
+    """Apply precision-weighted local kNN gating with adaptive pruning during inference."""
     if isinstance(features_mean, dict) and "mean" in features_mean:
         mean = features_mean["mean"]
         std = features_mean["std"]
-        pca_3d = features_mean.get("pca", None)
         val_features = extract_features(val_dict, bands, ref_band)
         val_features_norm = (val_features - mean) / std
-        if pca_3d is not None and hasattr(pca_3d, "transform"):
-            pca_val_norm = pca_3d.transform(val_features_norm)
-        else:
-            pca_val_norm = val_features_norm[:, :3]
     else:
         mean = features_mean
         std = features_std
         val_features = extract_features(val_dict, bands, ref_band)
         val_features_norm = (val_features - mean) / std
-        pca_val_norm = val_features_norm[:, :3]
 
-    # Use full normalized raw observed feature space for NearestNeighbors search
-    train_features_fit = train_features_norm
-    val_features_search = val_features_norm
+    train_features_fit = np.nan_to_num(train_features_norm, nan=0.0, posinf=0.0, neginf=0.0)
+    val_features_search = np.nan_to_num(val_features_norm, nan=0.0, posinf=0.0, neginf=0.0)
 
-    K_use = max(1, min(K, len(train_features_fit)))
-    nn = NearestNeighbors(n_neighbors=K_use, algorithm='auto', n_jobs=-1).fit(train_features_fit)
+    n_ref = len(train_features_fit)
+    k_query = max(1, min(K + (1 if is_self else 0), n_ref))
+    nn = NearestNeighbors(n_neighbors=k_query, algorithm='auto', n_jobs=-1).fit(train_features_fit)
     dists, indices = nn.kneighbors(val_features_search)
 
-    sigmas = dists[:, -1]
-    sigmas = np.maximum(sigmas, 1e-5)
+    # Drop self-neighbor if evaluating on the reference calibration set itself
+    if (is_self or (dists.shape[1] > 1 and np.median(dists[:, 0]) < 1e-8)) and dists.shape[1] > 1:
+        dists = dists[:, 1:]
+        indices = indices[:, 1:]
 
-    kernel_weights = np.exp(- (dists ** 2) / (2.0 * sigmas[:, np.newaxis] ** 2))
-    kernel_weights_sum = np.sum(kernel_weights, axis=1, keepdims=True)
-    kernel_weights = kernel_weights / kernel_weights_sum
+    sigmas = np.maximum(dists[:, -1:], 1e-5)
+    kernel_weights = np.exp(-(dists ** 2) / (2.0 * sigmas ** 2))
+    kernel_weights /= np.maximum(np.sum(kernel_weights, axis=1, keepdims=True), 1e-15)
 
     n_val = len(val_dict['object_id'])
     n_experts = len(val_pdfs)
 
-    val_expert_weights = np.zeros((n_val, n_experts))
+    mean_errs = np.zeros((n_val, n_experts))
     for k in range(n_experts):
         neighbor_errors = train_errors[k, indices]
-        mean_err = np.sum(kernel_weights * neighbor_errors, axis=1)
-        # Apply realistic physical error floor (0.015) preventing zero-error monopolization
-        val_expert_weights[:, k] = 1.0 / np.maximum(mean_err, 0.015)
+        mean_errs[:, k] = np.sum(kernel_weights * neighbor_errors, axis=1)
 
+    # Precision-weighted local gating (exponent -3.0, floor 0.003) with adaptive relative pruning (<= 1.8x min_err)
+    min_err = np.min(mean_errs, axis=1, keepdims=True)
+    val_expert_weights = np.where(
+        mean_errs <= 1.8 * min_err,
+        np.maximum(mean_errs, 0.003) ** (-3.0),
+        0.0,
+    )
     val_expert_weights_sum = np.sum(val_expert_weights, axis=1, keepdims=True)
     val_expert_weights = val_expert_weights / (val_expert_weights_sum + 1e-15)
 
     weighted_pdfs = np.zeros_like(val_pdfs[0])
-    for idx in range(n_val):
-        w = val_expert_weights[idx]
-        pdf_sum = np.zeros_like(weighted_pdfs[idx])
-        for k in range(n_experts):
-            pdf_sum += w[k] * val_pdfs[k][idx]
-        norm_sum = np.sum(pdf_sum) + 1e-15
-        weighted_pdfs[idx] = pdf_sum / norm_sum
+    for k in range(n_experts):
+        weighted_pdfs += val_expert_weights[:, k:k+1] * val_pdfs[k]
+    norm_sums = np.sum(weighted_pdfs, axis=1, keepdims=True) + 1e-15
+    weighted_pdfs = weighted_pdfs / norm_sums
 
     return weighted_pdfs, val_expert_weights
 
@@ -636,7 +739,6 @@ class CommitteeOfExperts:
         from rail.estimation.algos.bpz_lite import BPZliteInformer, BPZliteEstimator
         from rail.estimation.algos.flexzboost import FlexZBoostInformer, FlexZBoostEstimator
         from rail.estimation.algos.gpz import GPzInformer, GPzEstimator
-        import aion_pz
 
         logging.getLogger("pontifex").info("Starting hyperparameter optimization via Optunity PSO...")
         n_total = len(train_dict['redshift'])
@@ -1130,7 +1232,6 @@ class CommitteeOfExperts:
         if optimize_hyperparams:
             pso_params = self.optimize_hyperparameters(train_dict, bands, ref_band)
         else:
-            # Try to load precomputed hyperparameters
             import joblib
             for path in ["results/pso_best_hyperparameters.pkl", "pso_best_hyperparameters.pkl"]:
                 if os.path.exists(path):
@@ -1140,8 +1241,7 @@ class CommitteeOfExperts:
                         break
                     except Exception:
                         pass
-        
-        # fallback defaults if none loaded
+
         if pso_params is None:
             logging.getLogger("pontifex").info("Using precomputed optimal hyperparameter defaults.")
             pso_params = {
@@ -1150,7 +1250,7 @@ class CommitteeOfExperts:
                 'flexzboost': {'nsharp': 8, 'max_depth': 8, 'nbump': 13},
                 'gpz': {'n_basis': 59, 'max_iter': 86},
                 'aion': {'alpha': 0.000589, 'learning_rate_init': 0.000226},
-                'knn_gating': {'K_val': 289},
+                'knn_gating': {'K_val': 60},
                 'em': {'learning_rate': 0.0583, 'smoothing_sigma': 1.6888}
             }
 
@@ -1171,13 +1271,49 @@ class CommitteeOfExperts:
         aion_alpha = pso_params.get('aion', {}).get('alpha', 0.000589)
         aion_lr = pso_params.get('aion', {}).get('learning_rate_init', 0.000226)
 
+        # Stratified cap for fast, non-overfitting production training (default 12,000 galaxies: 9,600 fit + 2,400 cal)
+        rng = np.random.default_rng(42)
+        max_train = int(os.environ.get("PONTIFEX_MAX_TRAIN", "12000"))
+        if (not is_ci) and (max_train > 0) and (n_train > max_train):
+            z_all = np.asarray(train_dict['redshift'], dtype=np.float64)
+            z_bins = np.clip(np.digitize(z_all, np.linspace(0.0, ZMAX, 31)) - 1, 0, 29)
+            counts = np.maximum(np.bincount(z_bins, minlength=30).astype(np.float64), 1.0)
+            p_strat = (1.0 / counts[z_bins]) ** 0.25
+            p_strat /= np.sum(p_strat)
+            sel_idx = np.sort(rng.choice(n_train, size=max_train, replace=False, p=p_strat))
+            train_dict = {k: np.asarray(v)[sel_idx].copy() for k, v in train_dict.items()}
+            n_train = len(train_dict['redshift'])
+
+        # Out-of-fold split: 80% base expert training (fit_dict), 20% held-out gating & PIT calibration (cal_dict)
+        if n_train >= 60:
+            perm = rng.permutation(n_train)
+            n_cal = max(15, int(0.20 * n_train))
+            cal_idx, fit_idx = perm[:n_cal], perm[n_cal:]
+            fit_dict = {k: np.asarray(v)[fit_idx].copy() for k, v in train_dict.items()}
+            cal_dict = {k: np.asarray(v)[cal_idx].copy() for k, v in train_dict.items()}
+        else:
+            fit_dict = {k: np.asarray(v).copy() for k, v in train_dict.items()}
+            cal_dict = {k: np.asarray(v).copy() for k, v in train_dict.items()}
+
+        # Detect bright spectroscopic selection cutoff (Taskset 2: 23.3 < p99(mag_i_lsst) < 24.5) and augment faint domain
+        if (not is_ci) and ("mag_i_lsst" in fit_dict):
+            p99_i = float(np.nanpercentile(fit_dict["mag_i_lsst"], 99.0))
+            if 23.3 < p99_i < 24.5:
+                logging.getLogger("pontifex").info(
+                    f"Detected bright-selected training set (p99 mag_i={p99_i:.2f} in [23.3, 24.5]). "
+                    "Applying faint photometric dimming (sim_faint) + C-Mixup augmentation."
+                )
+                fit_dict = augment_faint_and_cmixup(fit_dict, bands, rng, frac_faint=0.6, frac_mixup=0.3)
+                cal_dict = augment_faint_and_cmixup(cal_dict, bands, rng, frac_faint=0.6, frac_mixup=0.0)
+                fit_dict, _ = sanitize_input_catalog(fit_dict, raise_warnings=False)
+                cal_dict, _ = sanitize_input_catalog(cal_dict, raise_warnings=False)
+
         max_iter_nn = 10 if is_ci else 200
         max_iter_som = 100 if is_ci else 5000
         max_depth_fz = 3 if is_ci else fz_depth
-        n_train_samples = len(train_dict['redshift']) if 'redshift' in train_dict else 1000
-        K_val = 15 if is_ci else min(pso_params.get('knn_gating', {}).get('K_val', 289), max(1, n_train_samples - 1))
+        n_cal_samples = len(cal_dict['redshift'])
+        K_val = 15 if is_ci else min(60, max(1, n_cal_samples - 2))
 
-        # Calculate SNR and color error features in-place
         def engineer_photometric_features(data_dict, bands_list):
             for b in bands_list:
                 err_col = b + "_err"
@@ -1200,17 +1336,18 @@ class CommitteeOfExperts:
                     col_err = np.sqrt(err1**2 + err2**2)
                     data_dict[f"color_err_{b1}_{b2}"] = col_err
 
-        engineer_photometric_features(train_dict, bands)
+        engineer_photometric_features(fit_dict, bands)
+        engineer_photometric_features(cal_dict, bands)
 
-        # Run BPZ first to extract template-fit features on train set
         full_mag_limits = {
             'mag_u_lsst': 26.4, 'mag_g_lsst': 27.8, 'mag_r_lsst': 27.1,
             'mag_i_lsst': 26.7, 'mag_z_lsst': 25.8, 'mag_y_lsst': 24.6,
             'mag_Y_roman': 26.5, 'mag_J_roman': 26.5, 'mag_H_roman': 26.5
         }
         mag_limits = {k: v for k, v in full_mag_limits.items() if k in bands}
-        
-        train_handle = TableHandle('train_data', data=train_dict)
+
+        fit_handle = TableHandle('train_data', data=fit_dict)
+        cal_handle = TableHandle('cal_data', data=cal_dict)
         if len(bands) == 9:
             bpz_filts = ['DC2LSST_u', 'DC2LSST_g', 'DC2LSST_r', 'DC2LSST_i', 'DC2LSST_z', 'DC2LSST_y', 'roman_Y106', 'roman_J129', 'roman_H158']
         elif len(bands) == 3 or is_roman:
@@ -1226,55 +1363,73 @@ class CommitteeOfExperts:
             bands=bands, err_bands=err_bands, ref_band=ref_band, redshift_col="redshift",
             output_hdfn=True, mag_limits=mag_limits
         )
-        bpz_model = bpz_inf.inform(train_handle)
-        bpz_est = make_clean_stage(
+        bpz_model = bpz_inf.inform(fit_handle)
+        bpz_est_fit = make_clean_stage(
             BPZliteEstimator,
-            name="estimate_bpz", model=bpz_model, hdf5_groupname="",
+            name="estimate_bpz_fit", model=bpz_model, hdf5_groupname="",
             bands=bands, err_bands=err_bands, ref_band=ref_band, redshift_col="redshift",
             filter_list=bpz_filts, zp_errors=bpz_zp, mag_limits=mag_limits
         )
-        res_train = bpz_est.estimate(train_handle)
-        ancil = getattr(res_train.data, "ancil", None)
-        if ancil is not None and isinstance(ancil, dict) and "chi2_min" in ancil:
-            train_dict["bpz_chi2_min"] = ancil["chi2_min"]
-            train_dict["bpz_t_ml"] = ancil["t_ml"]
-            train_dict["bpz_z_tb"] = ancil["z_tb"]
+        res_fit = bpz_est_fit.estimate(fit_handle)
+        ancil_fit = getattr(res_fit.data, "ancil", None)
+        if ancil_fit is not None and isinstance(ancil_fit, dict) and "chi2_min" in ancil_fit:
+            fit_dict["bpz_chi2_min"] = ancil_fit["chi2_min"]
+            fit_dict["bpz_t_ml"] = ancil_fit["t_ml"]
+            fit_dict["bpz_z_tb"] = ancil_fit["z_tb"]
         else:
-            n_rows = len(train_dict["redshift"])
-            train_dict["bpz_chi2_min"] = np.zeros(n_rows)
-            train_dict["bpz_t_ml"] = np.zeros(n_rows)
-            train_dict["bpz_z_tb"] = np.zeros(n_rows)
+            n_rows = len(fit_dict["redshift"])
+            fit_dict["bpz_chi2_min"] = np.zeros(n_rows)
+            fit_dict["bpz_t_ml"] = np.zeros(n_rows)
+            fit_dict["bpz_z_tb"] = np.zeros(n_rows)
 
-        # Re-create TableHandle
-        train_handle = TableHandle('train_data', data=train_dict)
+        bpz_est_cal = make_clean_stage(
+            BPZliteEstimator,
+            name="estimate_bpz_cal", model=bpz_model, hdf5_groupname="",
+            bands=bands, err_bands=err_bands, ref_band=ref_band, redshift_col="redshift",
+            filter_list=bpz_filts, zp_errors=bpz_zp, mag_limits=mag_limits
+        )
+        res_cal = bpz_est_cal.estimate(cal_handle)
+        ancil_cal = getattr(res_cal.data, "ancil", None)
+        if ancil_cal is not None and isinstance(ancil_cal, dict) and "chi2_min" in ancil_cal:
+            cal_dict["bpz_chi2_min"] = ancil_cal["chi2_min"]
+            cal_dict["bpz_t_ml"] = ancil_cal["t_ml"]
+            cal_dict["bpz_z_tb"] = ancil_cal["z_tb"]
+        else:
+            n_rows_c = len(cal_dict["redshift"])
+            cal_dict["bpz_chi2_min"] = np.zeros(n_rows_c)
+            cal_dict["bpz_t_ml"] = np.zeros(n_rows_c)
+            cal_dict["bpz_z_tb"] = np.zeros(n_rows_c)
 
-        # 1. Train NN1
+        fit_handle = TableHandle('train_data', data=fit_dict)
+        cal_handle = TableHandle('cal_data', data=cal_dict)
+
+        # 1. Train NN1 on fit_dict, evaluate out-of-fold on cal_dict
         informer_nn1 = make_clean_stage(
             sklearn_neurnet.SklNeurNetInformer,
             name='inform_nn1', bands=bands, ref_band=ref_band,
             redshift_col='redshift', width=0.03, max_iter=max_iter_nn, hdf5_groupname=''
         )
-        model_nn1 = informer_nn1.inform(train_handle)
+        model_nn1 = informer_nn1.inform(fit_handle)
         est_nn1 = make_clean_stage(
             sklearn_neurnet.SklNeurNetEstimator,
             name='estimate_nn1', model=model_nn1, bands=bands, ref_band=ref_band, width=0.03, hdf5_groupname=''
         )
-        pdf_nn1_train = est_nn1.estimate(train_handle).data.pdf(Z_CENTERS)
+        pdf_nn1_cal = est_nn1.estimate(cal_handle).data.pdf(Z_CENTERS)
 
-        # 2. Train NN2
+        # 2. Train NN2 on fit_dict, evaluate out-of-fold on cal_dict
         informer_nn2 = make_clean_stage(
             sklearn_neurnet.SklNeurNetInformer,
             name='inform_nn2', bands=bands, ref_band=ref_band,
             redshift_col='redshift', width=0.06, max_iter=max_iter_nn, hdf5_groupname=''
         )
-        model_nn2 = informer_nn2.inform(train_handle)
+        model_nn2 = informer_nn2.inform(fit_handle)
         est_nn2 = make_clean_stage(
             sklearn_neurnet.SklNeurNetEstimator,
             name='estimate_nn2', model=model_nn2, bands=bands, ref_band=ref_band, width=0.06, hdf5_groupname=''
         )
-        pdf_nn2_train = est_nn2.estimate(train_handle).data.pdf(Z_CENTERS)
+        pdf_nn2_cal = est_nn2.estimate(cal_handle).data.pdf(Z_CENTERS)
 
-        # 3. Train KNN
+        # 3. Train KNN on fit_dict, evaluate out-of-fold on cal_dict
         informer_knn = make_clean_stage(
             k_nearneigh.KNearNeighInformer,
             name='inform_knn', bands=bands, ref_band=ref_band,
@@ -1283,24 +1438,24 @@ class CommitteeOfExperts:
             nneigh_min=5 if is_ci else knn_nneigh, nneigh_max=5 if is_ci else knn_nneigh,
             ngrid_sigma=1 if is_ci else knn_ngrid, mag_limits=mag_limits
         )
-        model_knn = informer_knn.inform(train_handle)
+        model_knn = informer_knn.inform(fit_handle)
         est_knn = make_clean_stage(
             k_nearneigh.KNearNeighEstimator,
             name='estimate_knn', model=model_knn, bands=bands, ref_band=ref_band,
             hdf5_groupname='', zmin=0.03, zmax=ZMAX, nzbins=NZ-1, nondetect_val=np.nan,
             mag_limits=mag_limits
         )
-        pdf_knn_train = est_knn.estimate(train_handle).data.pdf(Z_CENTERS)
+        pdf_knn_cal = est_knn.estimate(cal_handle).data.pdf(Z_CENTERS)
 
-        # 4. Train SOM
-        pdf_som_train = get_som_pdfs(train_dict, train_dict, bands, ref_band, Z_GRID, 
-                                     n_dim=som_ndim, m_dim=som_ndim, max_iter=max_iter_som,
-                                     sigma=som_sigma, learning_rate=som_lr)
+        # 4. Train SOM on fit_dict, evaluate out-of-fold on cal_dict
+        pdf_som_cal = get_som_pdfs(fit_dict, cal_dict, bands, ref_band, Z_GRID,
+                                   n_dim=som_ndim, m_dim=som_ndim, max_iter=max_iter_som,
+                                   sigma=som_sigma, learning_rate=som_lr)
 
-        # 5. Train BPZ (already completed at start)
-        pdf_bpz_train = clean_pdf(res_train.data.pdf(Z_CENTERS))
+        # 5. BPZ on cal_dict
+        pdf_bpz_cal = clean_pdf(res_cal.data.pdf(Z_CENTERS))
 
-        # 6. Train FlexZBoost
+        # 6. Train FlexZBoost on fit_dict, evaluate out-of-fold on cal_dict
         fz_dict = dict(zmin=0.03, zmax=ZMAX, nzbins=NZ-1,
                        trainfrac=0.75, bumpmin=0.02, bumpmax=0.35,
                        nbump=5 if is_ci else fz_nbump, sharpmin=0.7, sharpmax=2.1, nsharp=10 if is_ci else fz_nsharp,
@@ -1312,15 +1467,15 @@ class CommitteeOfExperts:
             name='inform_fzboost', model='fzboost_model.pkl', bands=bands, err_bands=err_bands, ref_band=ref_band,
             redshift_col='redshift', mag_limits=mag_limits, **fz_dict
         )
-        model_fzboost = informer_fzboost.inform(train_handle)
+        model_fzboost = informer_fzboost.inform(fit_handle)
         estimator_fzboost = make_clean_stage(
             FlexZBoostEstimator,
             name='estimate_fzboost', model=model_fzboost, bands=bands, err_bands=err_bands, ref_band=ref_band,
             hdf5_groupname='', zmin=0.03, zmax=ZMAX, nzbins=NZ-1, mag_limits=mag_limits
         )
-        pdf_fzboost_train = estimator_fzboost.estimate(train_handle).data.pdf(Z_CENTERS)
+        pdf_fzboost_cal = estimator_fzboost.estimate(cal_handle).data.pdf(Z_CENTERS)
 
-        # 7. Train AION (AION+ with holdout PIT recalibration)
+        # 7. Train AION on fit_dict, evaluate out-of-fold on cal_dict
         features_mode = aion_features or getattr(self, "aion_features", os.environ.get("PONTIFEX_AION_FEATURES", "photo"))
         if aion_head is not None:
             logging.getLogger("pontifex").info("Using provided AION head.")
@@ -1331,18 +1486,9 @@ class CommitteeOfExperts:
                 aion_device = os.environ.get("AION_PZ_DEVICE", "cpu")
                 aion_model, codec_manager, device = aion_pz.load_aion(device=aion_device)
 
-            n_tr = len(train_dict['redshift'])
-            if n_tr > 100:
-                n_cal = max(1, int(0.1 * n_tr))
-                perm = np.random.default_rng(42).permutation(n_tr)
-                fit_idx, cal_idx = perm[n_cal:], perm[:n_cal]
-            else:
-                fit_idx, cal_idx = np.arange(n_tr), np.array([], dtype=int)
+            x_fit_aion = aion_pz.build_design_matrix(aion_model, codec_manager, fit_dict, device, features=features_mode)
+            z_fit = fit_dict['redshift']
 
-            train_fit_dict = {k: v[fit_idx] for k, v in train_dict.items()}
-            x_fit_aion = aion_pz.build_design_matrix(aion_model, codec_manager, train_fit_dict, device, features=features_mode)
-            z_fit = train_dict['redshift'][fit_idx]
-            
             scaler = StandardScaler().fit(x_fit_aion)
             xs_fit = scaler.transform(x_fit_aion)
             labels_fit = aion_pz._z_to_bin(z_fit)
@@ -1353,18 +1499,16 @@ class CommitteeOfExperts:
                 batch_size=256,
                 learning_rate_init=aion_lr,
                 max_iter=max_iter_nn,
-                early_stopping=True,
+                early_stopping=True if len(xs_fit) >= 100 else False,
                 n_iter_no_change=8,
                 random_state=42,
             )
             clf.fit(xs_fit, labels_fit)
             aion_head = {"scaler": scaler, "clf": clf, "z_grid": Z_GRID, "classes_": clf.classes_, "features": features_mode}
 
-            if len(cal_idx) > 0:
-                train_cal_dict = {k: v[cal_idx] for k, v in train_dict.items()}
-                x_cal_aion = aion_pz.build_design_matrix(aion_model, codec_manager, train_cal_dict, device, features=features_mode)
-                pz_cal = aion_pz.predict_pz(aion_head, x_cal_aion)
-                aion_head["recal"] = aion_pz.fit_pit_recalibration(pz_cal, Z_GRID, train_dict['redshift'][cal_idx])
+            x_cal_aion = aion_pz.build_design_matrix(aion_model, codec_manager, cal_dict, device, features=features_mode)
+            pz_cal_aion = aion_pz.predict_pz(aion_head, x_cal_aion)
+            aion_head["recal"] = aion_pz.fit_pit_recalibration(pz_cal_aion, Z_GRID, cal_dict['redshift'])
 
         features_mode = aion_head.get("features", features_mode)
         if features_mode == "photo":
@@ -1372,22 +1516,23 @@ class CommitteeOfExperts:
         else:
             aion_device = os.environ.get("AION_PZ_DEVICE", "cpu")
             aion_model, codec_manager, device = aion_pz.load_aion(device=aion_device)
-        x_train_aion = aion_pz.build_design_matrix(aion_model, codec_manager, train_dict, device, features=features_mode)
-        pdf_aion_train = aion_pz._predict_calibrated(aion_head, x_train_aion)
-        pdf_aion_train = 0.5 * (pdf_aion_train[:, :-1] + pdf_aion_train[:, 1:])
+        x_cal_aion = aion_pz.build_design_matrix(aion_model, codec_manager, cal_dict, device, features=features_mode)
+        pdf_aion_cal = aion_pz._predict_calibrated(aion_head, x_cal_aion)
+        pdf_aion_cal = 0.5 * (pdf_aion_cal[:, :-1] + pdf_aion_cal[:, 1:])
 
-        # 7.5 Train LePhare conditionally (only if not is_roman and not is_ci)
-        pdf_lephare_train = None
+        # 7.5 Train LePhare conditionally (when explicitly enabled via PONTIFEX_ENABLE_LEPHARE=1)
+        pdf_lephare_cal = None
         lephare_model = None
-        if not is_roman and not self.is_ci:
+        enable_lephare = os.environ.get("PONTIFEX_ENABLE_LEPHARE", "0") == "1"
+        if enable_lephare and not is_roman and not self.is_ci and HAS_LEPHARE and LephareInformer is not None:
             lp_bands = ['mag_u_lsst', 'mag_g_lsst', 'mag_r_lsst', 'mag_i_lsst', 'mag_z_lsst', 'mag_y_lsst']
             lp_err_bands = ['mag_u_lsst_err', 'mag_g_lsst_err', 'mag_r_lsst_err', 'mag_i_lsst_err', 'mag_z_lsst_err', 'mag_y_lsst_err']
             lp_ref_band = 'mag_i_lsst'
-            
+
             curr_bands = bands if len(bands) == 6 else lp_bands
             curr_err_bands = err_bands if len(bands) == 6 else lp_err_bands
             curr_ref_band = ref_band if len(bands) == 6 else lp_ref_band
-            
+
             lephare_config_file = "/home/mardom/Rubin-LSST-Research/Photometric-Redshift/code/rail_lephare/tests/data/lsst.para"
             if not os.path.exists(lephare_config_file):
                 possible_paths = [
@@ -1401,34 +1546,36 @@ class CommitteeOfExperts:
                         lephare_config_file = p
                         break
             lephare_config = lp.keymap_to_string_dict(lp.read_config(lephare_config_file))
-            
+
             lp_inf = make_clean_stage(
                 LephareInformer,
                 name="inform_lp", model="lp_model.pkl", hdf5_groupname="",
                 bands=curr_bands, err_bands=curr_err_bands, ref_band=curr_ref_band, redshift_col="redshift",
                 zmin=0.03, zmax=1.5, nzbins=61, **{f"lephare.{k}": v for k, v in lephare_config.items()}
             )
-            lephare_model = lp_inf.inform(train_handle)
-            lp_est_train = make_clean_stage(
+            lephare_model = lp_inf.inform(fit_handle)
+            lp_est_cal = make_clean_stage(
                 LephareEstimator,
-                name="estimate_lp_train", model=lephare_model, hdf5_groupname="",
+                name="estimate_lp_cal", model=lephare_model, hdf5_groupname="",
                 bands=curr_bands, err_bands=curr_err_bands, ref_band=curr_ref_band, redshift_col="redshift"
             )
-            pdf_lephare_train = lp_est_train.estimate(train_handle).data.pdf(Z_CENTERS)
+            pdf_lephare_cal = lp_est_cal.estimate(cal_handle).data.pdf(Z_CENTERS)
 
-        # 7.6 Train PZFlow
-        if is_ci:
-            pdf_pzflow_train = np.full((len(train_dict["redshift"]), NZ - 1), 1.0 / (NZ - 1))
+        # 7.6 Train PZFlow on fit_dict, evaluate out-of-fold on cal_dict (when PONTIFEX_ENABLE_PZFLOW=1)
+        enable_pzflow = os.environ.get("PONTIFEX_ENABLE_PZFLOW", "0") == "1"
+        if is_ci or (not enable_pzflow):
+            pdf_pzflow_cal = np.full((len(cal_dict["redshift"]), NZ - 1), 1.0 / (NZ - 1))
         else:
+            pzflow_epochs = int(os.environ.get("PONTIFEX_PZFLOW_EPOCHS", "25"))
             pzflow_inf = make_clean_stage(
                 PZFlowInformer,
                 name="inform_pzflow", model="pzflow_model.pkl", hdf5_groupname="",
                 zmin=0.03, zmax=ZMAX, nzbins=NZ-1, seed=0,
                 ref_band=ref_band, column_names=bands, mag_limits=mag_limits,
                 include_mag_errors=False, redshift_col="redshift",
-                n_training_epochs=50
+                n_training_epochs=pzflow_epochs
             )
-            pzflow_model = pzflow_inf.inform(train_handle)
+            pzflow_model = pzflow_inf.inform(fit_handle)
             pzflow_est = make_clean_stage(
                 PZFlowEstimator,
                 name="estimate_pzflow", model=pzflow_model, hdf5_groupname="",
@@ -1436,59 +1583,63 @@ class CommitteeOfExperts:
                 ref_band=ref_band, column_names=bands, mag_limits=mag_limits,
                 include_mag_errors=False, redshift_col="redshift"
             )
-            train_dict_for_flow = train_dict.copy()
-            if 'redshift' not in train_dict_for_flow:
-                train_dict_for_flow['redshift'] = np.zeros(len(train_dict_for_flow[list(train_dict_for_flow.keys())[0]]))
-            train_handle_for_flow = TableHandle('train_data_flow', data=train_dict_for_flow)
-            pdf_pzflow_train = pzflow_est.estimate(train_handle_for_flow).data.pdf(Z_CENTERS)
+            cal_dict_for_flow = cal_dict.copy()
+            if 'redshift' not in cal_dict_for_flow:
+                cal_dict_for_flow['redshift'] = np.zeros(len(cal_dict_for_flow[list(cal_dict_for_flow.keys())[0]]))
+            cal_handle_for_flow = TableHandle('cal_data_flow', data=cal_dict_for_flow)
+            pdf_pzflow_cal = pzflow_est.estimate(cal_handle_for_flow).data.pdf(Z_CENTERS)
 
-        # 7.7 Train GPz
+        # 7.7 Train GPz on fit_dict, evaluate out-of-fold on cal_dict
         gpz_inf = make_clean_stage(
             GPzInformer,
             name="inform_gpz", model="gpz_model.pkl", hdf5_groupname="",
             bands=bands, err_bands=err_bands, ref_band=ref_band, redshift_col="redshift",
-            replace_error_vals=[0.1] * len(bands), max_iter=5 if is_ci else gpz_iter, n_basis=gpz_basis,
+            replace_error_vals=[0.1] * len(bands), max_iter=5 if is_ci else min(gpz_iter, 35), n_basis=gpz_basis,
             train_frac=0.8, csl_method="normal", mag_limits=mag_limits
         )
-        gpz_model = gpz_inf.inform(train_handle)
+        gpz_model = gpz_inf.inform(fit_handle)
         gpz_est = make_clean_stage(
             GPzEstimator,
             name="estimate_gpz", model=gpz_model, hdf5_groupname="",
             bands=bands, err_bands=err_bands, ref_band=ref_band, redshift_col="redshift",
             replace_error_vals=[0.1] * len(bands), zmin=0.03, zmax=ZMAX, nzbins=NZ-1, mag_limits=mag_limits
         )
-        pdf_gpz_train = gpz_est.estimate(train_handle).data.pdf(Z_CENTERS)
+        pdf_gpz_cal = gpz_est.estimate(cal_handle).data.pdf(Z_CENTERS)
 
-        # Clean all PDFs
-        pdf_nn1_train = clean_pdf(pdf_nn1_train)
-        pdf_nn2_train = clean_pdf(pdf_nn2_train)
-        pdf_knn_train = clean_pdf(pdf_knn_train)
-        pdf_som_train = clean_pdf(pdf_som_train)
-        pdf_bpz_train = clean_pdf(pdf_bpz_train)
-        pdf_fzboost_train = clean_pdf(pdf_fzboost_train)
-        pdf_aion_train = clean_pdf(pdf_aion_train)
-        pdf_pzflow_train = clean_pdf(pdf_pzflow_train)
-        pdf_gpz_train = clean_pdf(pdf_gpz_train)
-        if pdf_lephare_train is not None:
-            pdf_lephare_train = clean_pdf(pdf_lephare_train)
+        # Clean all out-of-fold calibration PDFs
+        pdf_nn1_cal = clean_pdf(pdf_nn1_cal)
+        pdf_nn2_cal = clean_pdf(pdf_nn2_cal)
+        pdf_knn_cal = clean_pdf(pdf_knn_cal)
+        pdf_som_cal = clean_pdf(pdf_som_cal)
+        pdf_bpz_cal = clean_pdf(pdf_bpz_cal)
+        pdf_fzboost_cal = clean_pdf(pdf_fzboost_cal)
+        pdf_aion_cal = clean_pdf(pdf_aion_cal)
+        pdf_pzflow_cal = clean_pdf(pdf_pzflow_cal)
+        pdf_gpz_cal = clean_pdf(pdf_gpz_cal)
+        if pdf_lephare_cal is not None:
+            pdf_lephare_cal = clean_pdf(pdf_lephare_cal)
 
-        # Gating
-        train_pdfs = [
-            pdf_nn1_train, pdf_nn2_train, pdf_knn_train, pdf_som_train,
-            pdf_bpz_train, pdf_fzboost_train, pdf_aion_train,
-            pdf_pzflow_train, pdf_gpz_train
+        # Out-of-fold Gating & PIT CDF Recalibration on cal_dict
+        cal_pdfs = [
+            pdf_nn1_cal, pdf_nn2_cal, pdf_knn_cal, pdf_som_cal,
+            pdf_bpz_cal, pdf_fzboost_cal, pdf_aion_cal,
+            pdf_pzflow_cal, pdf_gpz_cal
         ]
-        if pdf_lephare_train is not None:
-            train_pdfs.append(pdf_lephare_train)
+        if pdf_lephare_cal is not None:
+            cal_pdfs.append(pdf_lephare_cal)
 
         train_features_norm, train_errors, features_mean, features_std = compute_expert_weights_knn(
-            train_dict, train_pdfs, Z_CENTERS, bands, ref_band
+            cal_dict, cal_pdfs, Z_CENTERS, bands, ref_band
         )
 
-        weighted_train, _ = apply_expert_weights_knn(
-            train_dict, train_pdfs, train_features_norm, train_errors, features_mean, features_std, bands, ref_band, K=K_val
+        weighted_cal, _ = apply_expert_weights_knn(
+            cal_dict, cal_pdfs, train_features_norm, train_errors,
+            features_mean, features_std, bands, ref_band, K=K_val, is_self=True
         )
-        best_t = aion_pz.fit_temperature(weighted_train, Z_CENTERS, train_dict['redshift'])
+        dz_c = float(Z_CENTERS[1] - Z_CENTERS[0])
+        weighted_cal_dens = weighted_cal / np.maximum(np.sum(weighted_cal, axis=1, keepdims=True) * dz_c, 1e-12)
+        ensemble_recal = aion_pz.fit_pit_recalibration(weighted_cal_dens, Z_CENTERS, cal_dict['redshift'], damp=0.08)
+        best_t = 1.0
 
         model_pzflow_bytes = None
         if os.path.exists("pzflow_model.pkl"):
@@ -1511,16 +1662,17 @@ class CommitteeOfExperts:
             "model_lephare": lephare_model,
             "aion_head": aion_head,
             "train_dict_som": {
-                "redshift": train_dict["redshift"],
-                "dec": train_dict["dec"],
-                "ra": train_dict["ra"],
-                **{b: train_dict[b] for b in bands}
+                "redshift": fit_dict["redshift"],
+                "dec": fit_dict.get("dec", np.zeros(len(fit_dict["redshift"]))),
+                "ra": fit_dict.get("ra", np.zeros(len(fit_dict["redshift"]))),
+                **{b: fit_dict[b] for b in bands}
             },
             "train_features_norm": train_features_norm,
             "train_errors": train_errors,
             "features_mean": features_mean,
             "features_std": features_std,
             "best_t": best_t,
+            "ensemble_recal": ensemble_recal,
             "bands": bands,
             "ref_band": ref_band,
             "is_roman": is_roman,
@@ -1550,7 +1702,6 @@ class CommitteeOfExperts:
         err_bands = model_dict["err_bands"]
         max_iter_som = model_dict["max_iter_som"]
 
-        # Calculate SNR and color error features in-place
         def engineer_photometric_features(data_dict, bands_list):
             for b in bands_list:
                 err_col = b + "_err"
@@ -1582,7 +1733,6 @@ class CommitteeOfExperts:
         }
         mag_limits = {k: v for k, v in full_mag_limits.items() if k in bands}
 
-        # Run BPZ estimator first to extract template features on test set
         test_handle = TableHandle('test_data', data=test_dict)
         bpz_est = make_clean_stage(
             BPZliteEstimator,
@@ -1602,7 +1752,6 @@ class CommitteeOfExperts:
             test_dict["bpz_t_ml"] = np.zeros(n_test_rows)
             test_dict["bpz_z_tb"] = np.zeros(n_test_rows)
 
-        # Re-create TableHandle
         test_handle = TableHandle('test_data', data=test_dict)
 
         # 1. NN1
@@ -1631,7 +1780,7 @@ class CommitteeOfExperts:
         # 4. SOM
         pdf_som = get_som_pdfs(model_dict["train_dict_som"], test_dict, bands, ref_band, Z_GRID, max_iter=max_iter_som)
 
-        # 5. BPZ (already completed at start)
+        # 5. BPZ
         pdf_bpz = clean_pdf(res_test.data.pdf(Z_CENTERS))
 
         # 6. FlexZBoost
@@ -1642,7 +1791,7 @@ class CommitteeOfExperts:
         )
         pdf_fzboost = estimator_fzboost.estimate(test_handle).data.pdf(Z_CENTERS)
 
-        # 7. AION (AION+ calibrated expert)
+        # 7. AION
         aion_head = model_dict.get("aion_head")
         if aion_head is not None and aion_pz is not None:
             features_mode = aion_head.get("features", os.environ.get("PONTIFEX_AION_FEATURES", "photo"))
@@ -1730,15 +1879,14 @@ class CommitteeOfExperts:
         if pdf_lephare is not None:
             pdf_lephare = clean_pdf(pdf_lephare)
 
-        # Combine
         test_pdfs = [
             pdf_nn1, pdf_nn2, pdf_knn, pdf_som,
             pdf_bpz, pdf_fzboost, pdf_aion,
             pdf_pzflow, pdf_gpz
         ]
-        # Store individual base expert PDFs
         base_expert_names = ['nn1', 'nn2', 'knn', 'som', 'bpz', 'flexzboost', 'aion', 'pzflow', 'gpz']
         if pdf_lephare is not None:
+            test_pdfs.append(pdf_lephare)
             base_expert_names.append('lephare')
         self.last_base_pdfs = dict(zip(base_expert_names, test_pdfs))
 
@@ -1747,14 +1895,27 @@ class CommitteeOfExperts:
             n_missing = len(test_pdfs) - train_errors.shape[0]
             padding = np.repeat(train_errors[-1:], n_missing, axis=0)
             train_errors = np.vstack([train_errors, padding])
+        elif len(test_pdfs) < train_errors.shape[0]:
+            train_errors = train_errors[:len(test_pdfs)]
+
         weighted_pdfs, val_expert_weights = apply_expert_weights_knn(
             test_dict, test_pdfs,
             model_dict["train_features_norm"], train_errors,
             model_dict["features_mean"], model_dict["features_std"],
-            bands, ref_band, K=K_val
+            bands, ref_band, K=min(60, K_val), is_self=False
         )
+        self.last_uncalibrated_pdfs = weighted_pdfs.copy()
+        self.last_expert_weights = val_expert_weights
 
-        calibrated_pdfs = apply_entropy_adaptive_temperature(weighted_pdfs, Z_CENTERS, model_dict["best_t"])
+        ensemble_recal = model_dict.get("ensemble_recal")
+        if ensemble_recal is not None and aion_pz is not None:
+            dz_c = float(Z_CENTERS[1] - Z_CENTERS[0])
+            w_dens = weighted_pdfs / np.maximum(np.sum(weighted_pdfs, axis=1, keepdims=True) * dz_c, 1e-12)
+            calibrated_pdfs = aion_pz.apply_pit_recalibration(w_dens, Z_CENTERS, ensemble_recal)
+            calibrated_pdfs = clean_pdf(calibrated_pdfs) / dz_c
+        else:
+            best_t = min(float(model_dict.get("best_t", 1.0)), 1.05)
+            calibrated_pdfs = apply_entropy_adaptive_temperature(weighted_pdfs, Z_CENTERS, best_t, gamma=0.05)
         return calibrated_pdfs
 
     def save(self, filepath: str) -> None:
