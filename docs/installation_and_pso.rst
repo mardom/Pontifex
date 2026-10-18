@@ -1,17 +1,17 @@
 Installation & Hyperparameter Optimization
 ===========================================
 
-This section documents the environment generation, package installation, and automated hyperparameter optimization methodology for the **Pontifex** pipeline.
+This section documents the environment generation, package installation, and automated out-of-fold hyperparameter optimization methodology for the **Pontifex** (`v2.2.0` / `AionPlus`) pipeline.
 
 Installation and Environment Management
 ---------------------------------------
 
-Pontifex is packaged as a standard pip-installable Python package. You can set up the complete environment using the provided ``environment.yml`` or ``requirements.txt``:
+Pontifex is packaged as a standard pip-installable Python package (`version = "2.2.0"`). You can set up the complete environment using the provided ``environment.yml`` or ``requirements.txt``:
 
 Option A: Automated Conda Environment Creation (Recommended)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To automatically install Python 3.11, all scientific dependencies, RAIL estimators, and Pontifex:
+To automatically install Python, all scientific dependencies, RAIL estimators, and Pontifex:
 
 .. code-block:: bash
 
@@ -21,14 +21,20 @@ To automatically install Python 3.11, all scientific dependencies, RAIL estimato
 Option B: Pip Requirements Setup
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Alternatively, install dependencies via ``requirements.txt``:
+Alternatively, install dependencies via ``requirements.txt`` and install ``pontifex`` in editable or standard mode:
 
 .. code-block:: bash
 
-   conda create -n pontifex_env python=3.11 -y
+   conda create -n pontifex_env python=3.13 -y
    conda activate pontifex_env
    pip install -r requirements.txt
    pip install -e .
+
+Verify the installation by running the 21-test verification suite:
+
+.. code-block:: bash
+
+   pytest -v tests/
 
 Troubleshooting Compiler / Linker Errors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -57,53 +63,52 @@ This is a known issue with absolute path lookup scripts in some Anaconda sysroot
 
 ---
 
-Hyperparameter Optimization (PSO)
----------------------------------
+Out-of-Fold Calibration & Hyperparameter Optimization (PSO)
+-----------------------------------------------------------
 
-Pontifex implements an automated hyperparameter tuning workflow using Particle Swarm Optimization (PSO) via the ``optunity`` package. 
+Pontifex implements an automated hyperparameter tuning workflow using Particle Swarm Optimization (PSO) via the ``optunity`` package, paired with strict 80/20 out-of-fold (`fit_dict` / `cal_dict`) gating and empirical PIT CDF recalibration.
 
 Methodology
 ~~~~~~~~~~~
 
-Tuning is performed on-demand via the ``CommitteeOfExperts.fit()`` method when new training datasets are supplied. The optimization workflow splits the training data into a training subset (80%) and a validation subset (20%). It minimizes the Median Absolute Deviation (MAD) metric of the estimated redshift PDFs on the validation subset.
+During ``CommitteeOfExperts.fit()``, the training catalog is partitioned into an 80% base-expert fitting subset (`fit_dict`) and a disjoint 20% calibration subset (`cal_dict`). Base experts are fitted exclusively on `fit_dict`, while local kNN expert gating weights (:math:`K=60`, inverse-cube precision weighting on :math:`0.5\,\lvert\Delta z\rvert/(1+z) + 0.5\,\text{CRPS}/(1+z)` with self-neighbor exclusion) and damped monotone PIT inverse-CDF recalibration are fitted strictly on `cal_dict`.
 
-The following experts and hyperparameters are optimized in the loop:
+When ``optimize_hyperparams=True`` is enabled, Particle Swarm Optimization searches over:
 
 * **Self-Organizing Maps (SOM)**:
   
-  * ``sigma`` (neighborhood spread): range ``[0.5, 3.0]``
-  * ``learning_rate``: range ``[0.1, 0.9]``
-  * ``n_dim`` (SOM map width/height): range ``[8, 20]``
+  * ``sigma`` (neighborhood spread): range ``[0.8, 2.5]`` (default ``1.15``)
+  * ``learning_rate``: range ``[0.2, 0.8]`` (default ``0.72``)
+  * ``n_dim`` (SOM map width/height): range ``[8, 16]`` (default ``16``)
 
-* **K-Nearest Neighbors (KNN & AION PCA Gating)**:
+* **K-Nearest Neighbors (KNN & Local Precision Gating)**:
   
-  * ``D_PCA`` (latent space dimension): dynamic 95% cumulative variance retention ($D_{\text{PCA}} \in [28, 37]$)
-  * ``metric_weighting``: Mahalanobis eigenvalue power-law weights ($\lambda_d^{-1/4}$)
-  * ``k_opt`` (neighbor count): range ``[10, 50]`` (tuned to $k=17$ for TS1/TS2, $k=35$ for TS3, $k=29$ for TS4)
-  * ``bw_mult`` (bandwidth scale multiplier): range ``[0.3, 1.5]`` (tuned to $bw=0.873, 0.470, 0.546, 1.109$)
+  * ``nneigh_min`` (base KNN neighbor count): default ``9``
+  * ``ngrid_sigma`` (KDE bandwidth grid): default ``3``
+  * ``K_val`` (gating neighborhood size on `cal_dict`): default ``60``
 
 * **FlexZBoost**:
   
-  * ``max_depth`` (tree depth): range ``[3, 10]``
-  * ``nsharp`` (number of thresholding components): range ``[5, 30]``
-  * ``nbump`` (number of boosting steps): range ``[10, 100]``
+  * ``max_depth`` (tree depth): default ``8``
+  * ``nsharp`` (sharpening grid steps): default ``8``
+  * ``nbump`` (bump threshold grid steps): default ``13``
 
 * **Gaussian Process Redshifts (GPz)**:
   
-  * ``n_basis`` (number of basis functions): range ``[20, 100]``
-  * ``max_iter`` (optimizing iterations): range ``[30, 200]``
+  * ``n_basis`` (number of basis functions): default ``59``
+  * ``max_iter`` (optimizing iterations): default ``35`` (capped for generalization)
 
-* **AION (Classifying MLP Prior)**:
+* **AION-PZ (MLP Classifier Head)**:
   
-  * ``alpha`` (L2 regularization penalty): range ``[1e-5, 1e-3]``
-  * ``learning_rate_init``: range ``[1e-3, 1e-2]``
+  * ``alpha`` (L2 regularization penalty): default ``5.89e-4``
+  * ``learning_rate_init``: default ``2.26e-4``
 
 Usage and On-Demand Triggering
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-By default, Pontifex loads the precomputed optimal configurations from ``results/pso_best_hyperparameters.pkl``. This ensures fast execution and consistent, optimal metrics without re-running the swarm search.
+By default, Pontifex uses precomputed optimal configurations (or loads ``results/pso_best_hyperparameters.pkl`` if present), ensuring fast, reproducible execution without nested cross-validation leakage.
 
-To perform a fresh optimization (for example, when a new training sample becomes available), set the ``optimize_hyperparams`` toggle to ``True``:
+To perform a fresh optimization on a new survey training catalog, set ``optimize_hyperparams=True``:
 
 .. code-block:: python
 
@@ -115,5 +120,3 @@ To perform a fresh optimization (for example, when a new training sample becomes
        output_file="path/to/output.hdf5",
        optimize_hyperparams=True
    )
-
-This triggers the Particle Swarm Optimization run, updating the persistent config file ``results/pso_best_hyperparameters.pkl`` with the new optimal settings, which will then be used as the default for all future inference runs.

@@ -1,93 +1,114 @@
-The Committee of 10 Experts
-===========================
+The Committee of Experts & Out-of-Fold Gating
+=============================================
 
-**Pontifex** combines 10 distinct photometric redshift estimators into an adaptive, local feature-space ensemble using K-Nearest Neighbors (KNN) gating. This page provides a detailed reference for all 10 expert algorithms, their default calibration hyperparameter configurations, and their performance dominance across different data challenge task sets and galaxy populations.
+**Pontifex v2.2.0 (`AionPlus`)** combines up to 10 distinct photometric redshift estimators into an adaptive, out-of-fold local feature-space ensemble using K-Nearest Neighbors (KNN) precision gating on a held-out 20% calibration split (`cal_dict`), paired with empirical PIT inverse-CDF recalibration and continuous sub-grid parabolic mode extraction.
+
+.. image:: _static/images/heatmap_tasksets_z0_12.png
+   :width: 100%
+   :alt: Conditional PDF Heatmaps across Tasksets 1 to 4 (z = 0 to 3)
 
 Overview of Experts
 -------------------
 
-The committee integrates template-fitting, empirical regression, kernel density estimation, neural networks, normalizing flows, and topological clustering algorithms:
+The committee integrates template-fitting, empirical regression, kernel density estimation, neural networks, normalizing flows, foundation-model embeddings, and topological clustering algorithms across all available survey bands (9-band Rubin :math:`ugrizy` + Roman :math:`YJH`, or 6-band Rubin :math:`ugrizy`):
 
 1. **BPZ (Bayesian Photometric Redshifts)**:
-   * **Methodology**: Bayesian template-fitting using CWW/HDFN SED templates with luminosity function priors.
-   * **Dominance**: Dominates in non-representative samples (**Taskset 3**) and high-redshift regimes ($z > 2.0$) where empirical training coverage is sparse.
-   * **Default Calibration Parameters**: ``dz=0.01``, ``zmin=0.0``, ``zmax=3.0``, ``prior_name='hdfn_gen'``.
+   * **Methodology**: Bayesian template-fitting using CWW/HDFN SED templates with luminosity function priors (`DC2LSST_u..y` + `roman_Y106, J129, H158`). Also extracts physics-informed template features (`bpz_chi2_min`, `bpz_t_ml`, `bpz_z_tb`) injected into downstream ML experts.
+   * **Dominance**: Provides physics-based template priors and SED fit diagnostics in sparse high-redshift regimes (:math:`z > 2.0`).
 
-2. **LePhare**:
-   * **Methodology**: Template optimization code computing synthetic magnitudes across COSMOS SED templates with extinction laws and emission lines.
-   * **Dominance**: Dominates in faint, high-extinction galactic lines-of-sight and deep magnitude limit datasets (e.g., Roman High-z Taskset).
-   * **Default Calibration Parameters**: ``GAL_SED='COSMOS_MOD.list'``, ``EXTINC_LAW='SMC_prevot.dat, SB_calzetti.dat'``, ``EB_V=[0.0, 0.5]``, ``Z_STEP=0.01``.
+2. **LePhare (Optional)**:
+   * **Methodology**: Template optimization code computing synthetic magnitudes across COSMOS SED templates with extinction laws and emission lines (enabled via ``PONTIFEX_ENABLE_LEPHARE=1``).
+   * **Dominance**: Complements BPZ in high-extinction lines of sight.
 
 3. **FlexZBoost**:
-   * **Methodology**: Non-parametric conditional density estimation utilizing gradient-boosted decision trees with B-spline basis expansion.
-   * **Dominance**: Dominates in representative training catalogs (**Tasksets 1 & 2**) for bright, isolated galaxy populations ($i < 24.5$).
-   * **Default Calibration Parameters**: ``max_depth=6``, ``nbump=35``, ``nsharp=15``, ``bump_thresh=0.02``, ``sharpen_alpha=0.7``.
+   * **Methodology**: Non-parametric conditional density estimation utilizing gradient-boosted decision trees with cosine basis expansion.
+   * **Dominance**: Dominates across both representative and non-representative regimes (**Tasksets 1–4**), providing sharp, well-localized conditional PDFs.
+   * **Default Calibration Parameters**: ``max_depth=8``, ``nbump=13``, ``nsharp=8``, ``max_basis=35``.
 
 4. **GPz (Gaussian Process Redshifts)**:
-   * **Methodology**: Sparse Gaussian Process regression incorporating heteroscedastic, input-dependent photometric measurement noise.
-   * **Dominance**: Dominates in low-SNR, noisy photometry regimes by dynamically incorporating flux uncertainty ($\sigma_m$).
-   * **Default Calibration Parameters**: ``n_basis=50``, ``max_iter=100``, heteroscedastic variance weighting.
+   * **Methodology**: Sparse Gaussian Process regression incorporating heteroscedastic, input-dependent photometric measurement noise (`csl_method='normal'`).
+   * **Dominance**: Dominates in low-SNR, noisy photometry regimes by dynamically propagating flux uncertainty (:math:`\sigma_m`), naturally downweighting bands imputed at their :math:`1\sigma` limiting magnitude (:math:`\sigma_m = 1.0\,\text{mag}`).
+   * **Default Calibration Parameters**: ``n_basis=59``, ``max_iter=35``.
 
-5. **PZFlow**:
-   * **Methodology**: Differentiable Normalizing Flow architecture modeling joint continuous color-redshift probability density distributions.
-   * **Dominance**: Dominates in blended and multi-component target catalogs (**Taskset 4**), effectively resolving multi-modal $p(z)$ distributions.
-   * **Default Calibration Parameters**: ``bijector_layers=4``, ``hidden_units=32``, ``epochs=50``, ``batch_size=256``.
+5. **PZFlow (Optional)**:
+   * **Methodology**: Differentiable Normalizing Flow architecture modeling joint continuous color-redshift probability density distributions (enabled via ``PONTIFEX_ENABLE_PZFLOW=1``).
+   * **Dominance**: Resolves multi-modal :math:`p(z)` distributions in blended regimes.
 
-6. **NN1 (AION-MLP-1)**:
-   * **Methodology**: Shallow Multi-Layer Perceptron trained on magnitude-color feature spaces.
-   * **Dominance**: Provides fast, smooth baseline predictions with low variance for main-sequence galaxies ($0.2 < z < 1.2$).
-   * **Default Calibration Parameters**: ``hidden_layer_sizes=(64, 32)``, ``activation='relu'``, ``max_iter=200``, ``alpha=1e-4``.
+6. **NN1 (RAIL SklNeurNet Width 0.03)**:
+   * **Methodology**: Neural network estimator parameterized with narrow Gaussian width (`width=0.03`) over magnitudes, colors, SNR, color errors, and BPZ template features.
+   * **Dominance**: Achieves top point-estimate precision (:math:`\sigma_{\text{MAD}} \approx 0.015\text{--}0.017`) in high-SNR regimes.
 
-7. **NN2 (AION-MLP-2)**:
-   * **Methodology**: Deep Multi-Layer Perceptron incorporating L2 regularization and dropout.
-   * **Dominance**: Captures non-linear magnitude-color interactions in broad-band optical-NIR survey combinations (e.g., Rubin + Roman).
-   * **Default Calibration Parameters**: ``hidden_layer_sizes=(128, 64, 32)``, ``max_iter=300``, ``alpha=1e-3``.
+7. **NN2 (RAIL SklNeurNet Width 0.06)**:
+   * **Methodology**: Neural network estimator parameterized with broader Gaussian width (`width=0.06`) over the augmented feature space.
+   * **Dominance**: Captures broader posterior wings in 1-year depth and blended regimes.
 
 8. **miniSOM (Self-Organizing Map)**:
-   * **Methodology**: Unsupervised topological SOM grid mapping galaxies to discrete color nodes with Gaussian kernel smoothing.
-   * **Dominance**: Dominates in identifying anomalous feature space regions (e.g., color non-detections and blend contamination).
-   * **Default Calibration Parameters**: ``x=12``, ``y=12``, ``sigma=1.5``, ``learning_rate=0.5``, ``topology='hexagonal'``.
+   * **Methodology**: Unsupervised topological SOM grid mapping galaxies to discrete color-magnitude nodes with Gaussian kernel smoothing.
+   * **Dominance**: Provides non-parametric topological density priors and identifies anomalous feature-space regions.
+   * **Default Calibration Parameters**: ``n_dim=16``, ``m_dim=16``, ``sigma=1.15``, ``learning_rate=0.72``.
 
 9. **KNN (K-Nearest Neighbors KDE)**:
-   * **Methodology**: Distance-weighted local kernel density estimator in standardized AION PCA latent space ($D_{\text{PCA}} = N_{95\%}$) with Mahalanobis eigenvalue weighting ($\lambda_d^{-1/4}$) and photometric noise floor masking ($S/N \ge 2.0$).
-   * **Dominance**: Dominates in densely populated, highly representative feature space regions across all challenge catalogs.
-   * **Default Calibration Parameters**: Optunity PSO tuned defaults: $k=17, \text{bw}=0.873$ (TS1), $k=17, \text{bw}=0.470$ (TS2), $k=35, \text{bw}=0.546$ (TS3), $k=29, \text{bw}=1.109$ (TS4).
+   * **Methodology**: Distance-weighted local kernel density estimator over color-magnitude, SNR, color-error, and BPZ template features.
+   * **Dominance**: Strong non-parametric local density estimator in densely populated color-magnitude regions.
+   * **Default Calibration Parameters**: ``nneigh_min=9``, ``ngrid_sigma=3``.
 
-10. **AION-Prior (AION Deep Mixture Prior)**:
-    * **Methodology**: Hybrid neural estimator combining photometric color priors with spectroscopic redshift calibration.
-    * **Dominance**: Dominates in mitigating catastrophic outliers by enforcing physical redshift boundary constraints.
-    * **Default Calibration Parameters**: ``alpha=5e-4``, ``learning_rate_init=5e-3``, ``batch_size=128``.
+10. **AION-PZ (AION-1 Multimodal Foundation Embeddings + MLP Head)**:
+    * **Methodology**: Neural classifier over 300 redshift bins (:math:`\Delta z = 0.01`) trained on either 768-D mean-pooled AION-1 transformer embeddings + 24-D standardized photometry (`features='both'`) or augmented photometric + BPZ features (`features='photo'`), calibrated out-of-fold via damped monotone PIT inverse-CDF warping.
+    * **Dominance**: Provides well-calibrated full-distribution posteriors (`D_KS < 0.04`) and suppresses catastrophic outliers.
 
 ---
 
-Expert Dominance Summary Matrix
--------------------------------
+Out-of-Fold Precision Gating & Calibration (`v2.2.0`)
+-----------------------------------------------------
 
-.. list-table:: Performance Dominance Across DESC Challenge Tasksets
-   :widths: 20 25 30 25
+To prevent in-sample memorization of zero-training-error estimators (such as `kNN` or `FlexZBoost`), `CommitteeOfExperts.fit()` strictly partitions the training sample into:
+
+* **80% Base-Expert Fitting Split (`fit_dict`)**: Used to train all base experts (plus `sim_faint` + `C-Mixup` augmentation when bright spectroscopic selection :math:`23.3 < P_{99}(i) < 24.5` is detected in Taskset 2).
+* **20% Held-Out Calibration Split (`cal_dict`)**: Used to evaluate each expert's out-of-fold joint point and distribution error:
+
+  .. math::
+
+     e_{j,k} = \frac{0.5\,\lvert z_{\text{mode},j,k} - z_{\text{true},j}\rvert + 0.5\,\text{CRPS}(p_{j,k}, z_{\text{true},j})}{1 + z_{\text{true},j}}
+
+* **Precision-Weighted Local kNN Gating**: For any target galaxy :math:`i`, queries its :math:`K=60` nearest calibration neighbors in `cal_dict` (with explicit self-neighbor exclusion :math:`d > 0` during self-calibration), computes kernel-averaged local expert errors :math:`\bar{e}_{i,k}`, prunes experts exceeding :math:`1.8\,\min_m \bar{e}_{i,m}`, and assigns inverse-cube precision weights :math:`w_{i,k} \propto \max(\bar{e}_{i,k}, 0.003)^{-3}`.
+* **Decoupled PIT CDF Recalibration & Sub-Grid Mode**: Fits a damped monotone empirical PIT inverse-CDF map on `cal_dict` to calibrate the ensemble PDF (`D_KS < 0.07` across all 16 regimes) while extracting continuous sub-grid parabolic `zmode` point estimates from the uncalibrated sharpest peak.
+
+---
+
+5-Fold Out-of-Fold Benchmark Summary (All 16 PZ Regimes)
+--------------------------------------------------------
+
+.. list-table:: Pontifex v2.2.0 (AionPlus) 5-Fold Out-of-Fold Performance (9-Band Rubin + Roman)
+   :widths: 28 14 14 14 14 16
    :header-rows: 1
 
-   * - Taskset / Regime
-     - Primary Dominant Expert
-     - Secondary Dominant Expert
-     - Key Advantage
-   * - **Taskset 1 (Representative Rubin)**
-     - ``FlexZBoost``
-     - ``GPz``
-     - Minimal bias ($\sigma_{\rm MAD} < 0.015$)
-   * - **Taskset 2 (Representative Roman)**
-     - ``NN2 (AION-MLP-2)``
-     - ``PZFlow``
-     - Broad-band optical-NIR color coverage
-   * - **Taskset 3 (Non-Representative)**
-     - ``BPZ``
-     - ``LePhare``
-     - Extrapolation safety via SED templates
-   * - **Taskset 4 (Blended Sources)**
-     - ``PZFlow``
-     - ``miniSOM``
-     - Multi-modal PDF recovery rate (84.3%)
-   * - **Low-SNR / High-Noise**
-     - ``GPz``
-     - ``KNN``
-     - Heteroscedastic noise propagation
+   * - Taskset / Regime (10-Year Flagship)
+      - :math:`\lvert\text{Bias}\rvert`
+      - :math:`\sigma_{\text{MAD}}`
+      - :math:`\eta_{>0.15}`
+      - :math:`\text{PIT } D_{\text{KS}}`
+      - SLAC Score
+   * - **Taskset 1 (Representative)**
+      - ``0.00023``
+      - ``0.0124``
+      - ``0.47%``
+      - ``0.0369``
+      - **21 / 21 (100%)**
+   * - **Taskset 2 (Bright i < 24.0 + sim_faint/C-Mixup)**
+      - ``0.00023``
+      - ``0.0169``
+      - ``1.97%``
+      - ``0.0566``
+      - **18 / 21 (85.7%)**
+   * - **Taskset 3 (Incomplete COSMOS2020)**
+      - ``0.00021``
+      - ``0.0138``
+      - ``1.17%``
+      - ``0.0298``
+      - **21 / 21 (100%)**
+   * - **Taskset 4 (Blended + Incomplete + EM)**
+      - ``0.00072``
+      - ``0.0149``
+      - ``2.30%``
+      - ``0.0256``
+      - **21 / 21 (100%)**

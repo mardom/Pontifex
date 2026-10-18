@@ -1,5 +1,6 @@
 """Pontifex Classifier: Tomographic Bin Assignment & MoE Boundary Regularization."""
 
+import os
 from typing import Optional, Tuple
 import numpy as np
 
@@ -9,18 +10,34 @@ except ImportError:
     xgb = None
 
 
+def _get_xgb_device(use_gpu: bool = True) -> str:
+    """Auto-detect CUDA availability for XGBoost hist training; fallback cleanly to CPU."""
+    if not use_gpu or os.environ.get("GITHUB_ACTIONS", "").lower() == "true" or os.environ.get("NZDC_FORCE_CPU", "") == "1":
+        return "cpu"
+    if xgb is None:
+        return "cpu"
+    try:
+        X_tiny = np.zeros((8, 2), dtype=np.float32)
+        y_tiny = np.array([0, 1, 0, 1, 0, 1, 0, 1], dtype=np.int32)
+        probe = xgb.XGBClassifier(n_estimators=1, max_depth=1, tree_method="hist", device="cuda")
+        probe.fit(X_tiny, y_tiny)
+        return "cuda"
+    except Exception:
+        return "cpu"
+
+
 def train_tomographic_classifier(
     X_train: np.ndarray,
     y_train: np.ndarray,
     sample_weights: Optional[np.ndarray] = None,
-    n_estimators: int = 180,
+    n_estimators: int = 200,
     max_depth: int = 6,
-    learning_rate: float = 0.08,
+    learning_rate: float = 0.075,
     use_gpu: bool = True,
     random_state: int = 42,
 ):
     """Train gradient-boosted decision trees for tomographic bin classification.
-    
+
     Parameters
     ----------
     X_train : np.ndarray
@@ -36,14 +53,14 @@ def train_tomographic_classifier(
     learning_rate : float
         Shrinkage factor.
     use_gpu : bool
-        Whether to attempt GPU training via 'cuda' device.
+        Whether to attempt GPU training via 'cuda' device with automatic CPU fallback.
     random_state : int
         Random seed.
     """
     if xgb is None:
         raise ImportError("xgboost is required for tomographic classification.")
 
-    device = "cuda" if use_gpu else "cpu"
+    device = _get_xgb_device(use_gpu=use_gpu)
     clf = xgb.XGBClassifier(
         n_estimators=n_estimators,
         max_depth=max_depth,
@@ -56,6 +73,10 @@ def train_tomographic_classifier(
         eval_metric="mlogloss",
     )
     clf.fit(X_train, y_train, sample_weight=sample_weights)
+    try:
+        clf.set_params(device="cpu")
+    except Exception:
+        pass
     return clf
 
 
@@ -67,7 +88,7 @@ def predict_tomographic_bins(
     regularization_weight: float = 0.12,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Predict tomographic bin assignments with Hybrid MoE boundary entropy regularization.
-    
+
     Parameters
     ----------
     clf : xgb.XGBClassifier
@@ -80,7 +101,7 @@ def predict_tomographic_bins(
         Shannon entropy threshold above which boundary objects are regularized.
     regularization_weight : float
         Mixing weight for uniform prior on high-entropy objects.
-        
+
     Returns
     -------
     bin_assignments : np.ndarray
@@ -88,6 +109,10 @@ def predict_tomographic_bins(
     probs : np.ndarray
         Regularized posterior probability matrix of shape (n_gal, n_tomo_bins).
     """
+    try:
+        clf.set_params(device="cpu")
+    except Exception:
+        pass
     probs = clf.predict_proba(X_wfd)
 
     # Hybrid MoE entropy regularization for uncertain boundary objects
@@ -98,4 +123,3 @@ def predict_tomographic_bins(
 
     bin_assignments = np.argmax(probs, axis=1).astype(int)
     return bin_assignments, probs
-

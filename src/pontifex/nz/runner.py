@@ -81,6 +81,7 @@ def train_and_calibrate(
     from sklearn.model_selection import StratifiedKFold
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
     y_pred_oof = np.zeros(len(y_true), dtype=int)
+    probs_oof = np.zeros((len(y_true), n_tomo_bins), dtype=np.float64)
 
     for fold, (train_idx, val_idx) in enumerate(skf.split(X, y_true)):
         sw_fold = sample_weights[train_idx] if sample_weights is not None else None
@@ -91,16 +92,18 @@ def train_and_calibrate(
             random_state=42 + fold,
         )
         probs_val = clf_fold.predict_proba(X[val_idx])
+        probs_oof[val_idx] = probs_val
         y_pred_oof[val_idx] = np.argmax(probs_val, axis=1)
 
     # 2. Build empirical calibration histograms from OUT-OF-FOLD predictions
-    # This prevents in-sample calibration overfitting and preserves realistic dispersion
+    # Blending hard-assigned and soft-posterior-weighted OOF histograms
     calib_hists = build_calibration_histograms(
         z_true=z_clean,
         y_pred=y_pred_oof,
         n_tomo_bins=n_tomo_bins,
         grid_edges=grid_edges,
         sample_weights=sample_weights,
+        probs_oof=probs_oof,
     )
 
     # 3. Train final production classifier on all training data
@@ -137,7 +140,17 @@ def predict_and_generate_outputs(
     n_objects = len(wfd_data[list(wfd_data.keys())[0]])
 
     X_wfd = extract_features(wfd_data)
-    bin_assignments, _ = predict_tomographic_bins(clf, X_wfd, n_tomo_bins=n_tomo_bins)
+    bin_assignments, probs_wfd = predict_tomographic_bins(clf, X_wfd, n_tomo_bins=n_tomo_bins)
+
+    # Adapt calibration histograms slightly to the WFD target sample's posterior transition matrix
+    adapted_hists = calib_hists.copy()
+    for k in range(n_tomo_bins):
+        mask_k = (bin_assignments == k)
+        if np.any(mask_k):
+            mean_p_k = np.mean(probs_wfd[mask_k], axis=0)
+            mix_k = mean_p_k @ calib_hists
+            adapted = 0.92 * calib_hists[k] + 0.08 * mix_k
+            adapted_hists[k] = adapted / np.maximum(adapted.sum(), 1e-12)
 
     offset = KEY_OFFSETS.get(key, 0)
     sequential_ids = np.arange(offset, offset + n_objects, dtype=int)
@@ -152,7 +165,7 @@ def predict_and_generate_outputs(
 
     # 2. Write central nz_estimate file
     bin_counts = np.bincount(bin_assignments, minlength=n_tomo_bins)
-    ens_estimate = qp.hist.create_ensemble(grid_edges, calib_hists)
+    ens_estimate = qp.hist.create_ensemble(grid_edges, adapted_hists)
     ens_estimate.set_ancil(dict(n_objects=bin_counts))
     Path(output_nz_estimate_file).parent.mkdir(parents=True, exist_ok=True)
     ens_estimate.write_to(output_nz_estimate_file)
@@ -161,7 +174,7 @@ def predict_and_generate_outputs(
     if output_nz_samples_file is not None:
         n_realizations = 100
         realization_matrix, bin_idx, i_real = generate_correlated_realizations(
-            calib_hists=calib_hists,
+            calib_hists=adapted_hists,
             grid_edges=grid_edges,
             n_realizations=n_realizations,
         )
