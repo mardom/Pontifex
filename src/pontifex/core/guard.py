@@ -202,3 +202,37 @@ def sanitize_input_catalog(
         warnings.warn(full_warning, UserWarning, stacklevel=2)
 
     return sanitized, guard_report
+
+
+TARGET_SKIP_COLS = {
+    "object_id", "id", "ID", "objectId",
+    "redshift", "redshift_manyband", "ztrue", "z_true", "zspec", "z_spec", "z", "Z", "sz",
+    "ra", "dec", "RA", "DEC", "coord_ra", "coord_dec",
+}
+
+
+class FeatureGuard:
+    """Object-oriented interface to ``sanitize_input_catalog`` for defensive photometric sanitization."""
+
+    def __init__(
+        self,
+        band_limits: Dict[str, float] = None,
+        default_mag_err: float = 1.0,
+        skip_cols: set = None,
+        nondetect_val: float = 99.0,
+        raise_warnings: bool = False,
+    ):
+        self.band_limits = dict(band_limits) if band_limits is not None else dict(BAND_MAG_LIMITS)
+        self.default_mag_err = float(default_mag_err)
+        self.skip_cols = set(skip_cols) if skip_cols is not None else set(TARGET_SKIP_COLS)
+        self.nondetect_val = float(nondetect_val)
+        self.raise_warnings = bool(raise_warnings)
+
+    def sanitize_dict(self, catalog_dict: Dict[str, Any]) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
+        """Sanitize a catalog dictionary using physical 1-sigma limiting magnitudes."""
+        return sanitize_input_catalog(
+            catalog_dict,
+            nondetect_val=self.nondetect_val,
+            raise_warnings=self.raise_warnings,
+        )
+

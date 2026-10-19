@@ -107,3 +107,35 @@ def get_bands_and_ref(columns: List[str]) -> Tuple[List[str], str, bool]:
         bands = ["u", "g", "r", "i", "z", "y"]
         ref_band = "i"
     return bands, ref_band, has_roman
+
+
+class TasksetBandConfig:
+    """Survey-strict bandpass configuration for PZ/NZ Challenge tasksets and COSMOS benchmarks."""
+
+    def __init__(self, taskset: str, allowed_bands: List[str]):
+        self.taskset = taskset
+        self.allowed_bands = list(allowed_bands)
+
+    @classmethod
+    def for_taskset(cls, taskset: str) -> "TasksetBandConfig":
+        """Return the official bandpass configuration for a given taskset or survey."""
+        key = str(taskset).lower()
+        if "cosmos" in key or "rubin_only" in key:
+            bands = [f"mag_{b}_lsst" for b in LSST_BANDS]
+        else:
+            # Official LSST-DESC PZ Tasksets 1-4 and NZ Tasksets 1-3 use all 9 Rubin+Roman bands
+            bands = [f"mag_{b}_lsst" for b in LSST_BANDS] + [f"mag_{b}_roman" for b in ROMAN_BANDS]
+        return cls(taskset=taskset, allowed_bands=bands)
+
+    def filter_catalog_dict(self, catalog: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+        """Filter a catalog dictionary to retain only allowed band columns plus metadata/targets."""
+        allowed_set = set(self.allowed_bands) | {f"{b}_err" for b in self.allowed_bands}
+        filtered = {}
+        for k, v in catalog.items():
+            if k.startswith("mag_"):
+                if k in allowed_set:
+                    filtered[k] = v
+            else:
+                filtered[k] = v
+        return filtered
+

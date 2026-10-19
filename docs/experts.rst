@@ -83,32 +83,32 @@ To prevent in-sample memorization of zero-training-error estimators (such as `kN
    :header-rows: 1
 
    * - Taskset / Regime (10-Year Flagship)
-      - :math:`\lvert\text{Bias}\rvert`
-      - :math:`\sigma_{\text{MAD}}`
-      - :math:`\eta_{>0.15}`
-      - :math:`\text{PIT } D_{\text{KS}}`
-      - SLAC Score
+     - :math:`\lvert\text{Bias}\rvert`
+     - :math:`\sigma_{\text{MAD}}`
+     - :math:`\eta_{>0.15}`
+     - :math:`\text{PIT } D_{\text{KS}}`
+     - SLAC Score
    * - **Taskset 1 (Representative)**
-      - ``0.00023``
-      - ``0.0124``
-      - ``0.47%``
-      - ``0.0369``
-      - **21 / 21 (100%)**
+     - ``0.00023``
+     - ``0.0124``
+     - ``0.47%``
+     - ``0.0369``
+     - **21 / 21 (100%)**
    * - **Taskset 2 (Bright i < 24.0 + sim_faint/C-Mixup)**
-      - ``0.00023``
-      - ``0.0169``
-      - ``1.97%``
-      - ``0.0566``
-      - **18 / 21 (85.7%)**
+     - ``0.00023``
+     - ``0.0169``
+     - ``1.97%``
+     - ``0.0566``
+     - **18 / 21 (85.7%)**
    * - **Taskset 3 (Incomplete COSMOS2020)**
-      - ``0.00021``
-      - ``0.0138``
-      - ``1.17%``
-      - ``0.0298``
-      - **21 / 21 (100%)**
+     - ``0.00021``
+     - ``0.0138``
+     - ``1.17%``
+     - ``0.0298``
+     - **21 / 21 (100%)**
    * - **Taskset 4 (Blended + Incomplete + EM)**
-      - ``0.00072``
-      - ``0.0149``
-      - ``2.30%``
-      - ``0.0256``
-      - **21 / 21 (100%)**
+     - ``0.00072``
+     - ``0.0149``
+     - ``2.30%``
+     - ``0.0256``
+     - **21 / 21 (100%)**
